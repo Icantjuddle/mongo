@@ -44,6 +44,7 @@ class merge_conflict_exception : std::exception {
 
 using T = std::string;
 using Key = std::pair<uint8_t*, size_t>;
+
 class Store {
     public:
         using Mapped = T;

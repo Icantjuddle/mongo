@@ -24,40 +24,25 @@
  * wish to do so, delete this exception statement from your version. If you
  * delete this exception statement from all source files in the program,
  * then also delete it in the license file.
- */
+= */
 
-#include "mongo/db/storage/biggie/biggie_store.h"
-// #include "mongo/db/storage/biggie/store.h"
+#include "mongo/db/storage/biggie/store.h"
 
 namespace mongo {
+class BiggieStore: public Store {
 
-bool BiggieStore::empty() const {
-    return map.empty();
+    std::map<Key, Mapped> map;
+    public:
+        bool empty() const;
+
+        Size size() const ;
+
+        void clear() noexcept;
+
+        bool insert (Value&& value);
+
+        Size erase (const Key& key);
+
+        Store& merge3(const Store& base, const Store& other);
+};
 }
-
-Size BiggieStore::size() const {
-    return map.size();
-}
-
-void BiggieStore::clear() noexcept {
-    map.clear();
-}
-
-bool BiggieStore::insert(Value&& value) {
-    try {
-        map[value.first] = value.second;
-
-    } catch (...) {
-        return false;
-    }
-    return true;
-}
-
-Size BiggieStore::erase(const Key& key) {
-    return map.erase(key);
-}
-
-Store& BiggieStore::merge3(const Store& base, const Store& other) {
-    return *this;
-}
-};  // namespace mongo
