@@ -1099,6 +1099,7 @@ env.Library(
         "stats/serveronly_stats",
         "stats/top",
         "storage/devnull/storage_devnull",
+        "storage/biggie/storage_biggie",
         "storage/ephemeral_for_test/storage_ephemeral_for_test",
         "storage/mmap_v1/mmap",
         "storage/mmap_v1/storage_mmapv1",
