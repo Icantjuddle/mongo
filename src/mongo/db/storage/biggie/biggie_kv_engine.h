@@ -32,6 +32,7 @@
 
 #include "mongo/db/storage/kv/kv_engine.h"
 #include "mongo/db/storage/recovery_unit_noop.h"
+#include "mongo/db/storage/biggie/biggie_record_store.h"
 
 namespace mongo {
 
@@ -42,6 +43,9 @@ class JournalListener;
  */
 class BiggieKVEngine : public KVEngine {
 public:
+
+    BiggieKVEngine() : KVEngine() {}
+   
     virtual ~BiggieKVEngine() {}
 
     virtual RecoveryUnit* newRecoveryUnit() {
@@ -58,7 +62,9 @@ public:
     virtual std::unique_ptr<RecordStore> getRecordStore(OperationContext* opCtx,
                                                         StringData ns,
                                                         StringData ident,
-                                                        const CollectionOptions& options);
+                                                        const CollectionOptions& options) {
+        return NULL; // TODO return a real thing 
+    }
 
     virtual Status createSortedDataInterface(OperationContext* opCtx,
                                              StringData ident,
@@ -68,7 +74,9 @@ public:
 
     virtual SortedDataInterface* getSortedDataInterface(OperationContext* opCtx,
                                                         StringData ident,
-                                                        const IndexDescriptor* desc);
+                                                        const IndexDescriptor* desc) {
+        return nullptr; // TODO : implement later                                                            
+    }
 
     virtual Status dropIdent(OperationContext* opCtx, StringData ident) {
         return Status::OK();

@@ -30,8 +30,8 @@
  */
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
-#include <utility>
 #include <cstring>
+#include <utility>
 
 #include "mongo/db/storage/biggie/biggie_record_store.h"
 
@@ -40,17 +40,50 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/biggie/biggie_store.h"
 #include "mongo/db/storage/biggie/store.h"
+#include "mongo/stdx/memory.h"
 // #inclu de "mongo/db/storage/oplog_hack.h"
 // #include "mongo/db/storage/recovery_unit.h"
-// #include "mongo/stdx/memory.h"
 // #include "mongo/util/log.h"
 // #include "mongo/util/mongoutils/str.h"
 // #include "mongo/util/unowned_ptr.h"
 
 namespace mongo {
 
+BiggieRecordStore::BiggieRecordStore(StringData ns,
+                                     std::shared_ptr<void>* dataInOut,
+                                     bool isCapped,
+                                     int64_t cappedMaxSize,
+                                     int64_t cappedMaxDocs,
+                                     CappedCallback* cappedCallback)
+    : RecordStore(ns),
+      _isCapped(isCapped),
+      _cappedMaxSize(cappedMaxSize),
+      _cappedMaxDocs(cappedMaxDocs),
+      _cappedCallback(cappedCallback) {
+    // TODO: Finish constructor, using ephemeral for test, what are these arguments
+}
+
 const char* BiggieRecordStore::name() const {
     return "Biggie";
+}
+
+long long BiggieRecordStore::dataSize(OperationContext* opCtx) const {
+    // TODO: Understand what this should return
+    return -1;
+}
+
+long long BiggieRecordStore::numRecords(OperationContext* opCtx) const {
+    // TODO: Return a real answer here
+    return (long long)_store->size();
+}
+
+bool BiggieRecordStore::isCapped() const {
+    return _isCapped;
+}
+int64_t BiggieRecordStore::storageSize(OperationContext* opCtx,
+                                       BSONObjBuilder* extraInfo,
+                                       int infoLevel) const {
+    return 100;  // ? Is this implemented here, or by BiggieStore
 }
 
 RecordData BiggieRecordStore::dataFor(OperationContext* opCtx, const RecordId& loc) const {
@@ -59,8 +92,10 @@ RecordData BiggieRecordStore::dataFor(OperationContext* opCtx, const RecordId& l
     return rd;  // should use std::move?
 }
 
-bool BiggieRecordStore::findRecord(OperationContext* opCtx, const RecordId& loc, RecordData* rd) const {
-    // TODO: RecordId -> std::pair<u8*,size_t>
+bool BiggieRecordStore::findRecord(OperationContext* opCtx,
+                                   const RecordId& loc,
+                                   RecordData* rd) const {
+    // TODO: We should probably find a record
     // can't do this without a find
     // Key key(&(loc.repr()), 8);
     return false;
@@ -73,15 +108,119 @@ void BiggieRecordStore::deleteRecord(OperationContext* opCtx, const RecordId&) {
 StatusWith<RecordId> BiggieRecordStore::insertRecord(
     OperationContext* opCtx, const char* data, int len, Timestamp, bool enforceQuota) {
     size_t num_chunks = 64 / sizeof(uint8_t);
-    uint8_t* key_ptr = (uint8_t *) std::malloc(num_chunks);
+    uint8_t* key_ptr = (uint8_t*)std::malloc(num_chunks);
     uint64_t thisRecordId = ++nextRecordId;
     std::memcpy(key_ptr, &thisRecordId, num_chunks);
 
     Key key(key_ptr, num_chunks);
     Store::Value v(key, std::string(data, len));
     _store->insert(std::move(v));
- 
+
     RecordId rID(thisRecordId);
     return StatusWith<RecordId>(rID);
 }
+
+Status BiggieRecordStore::insertRecordsWithDocWriter(OperationContext* opCtx,
+                                                     const DocWriter* const* docs,
+                                                     const Timestamp*,
+                                                     size_t nDocs,
+                                                     RecordId* idsOut) {
+    // TODO: Implement
+    return Status::OK();
+}
+
+Status BiggieRecordStore::updateRecord(OperationContext* opCtx,
+                                       const RecordId& oldLocation,
+                                       const char* data,
+                                       int len,
+                                       bool enforceQuota,
+                                       UpdateNotifier* notifier) {
+    // TODO Implement
+    return Status::OK();
+}
+
+bool BiggieRecordStore::updateWithDamagesSupported() const {
+    // TODO : Implement
+    return false;
+}
+
+StatusWith<RecordData> BiggieRecordStore::updateWithDamages(
+    OperationContext* opCtx,
+    const RecordId& loc,
+    const RecordData& oldRec,
+    const char* damageSource,
+    const mutablebson::DamageVector& damages) {
+    // TODO: Implement
+    return StatusWith<RecordData>(oldRec);
+}
+
+std::unique_ptr<SeekableRecordCursor> BiggieRecordStore::getCursor(OperationContext* opCtx,
+                                                                   bool forward) const {
+    // TODO : implement
+    return std::make_unique<Cursor>(opCtx, *this);
+}
+
+Status BiggieRecordStore::truncate(OperationContext* opCtx) {
+    // TODO : implement
+    return Status::OK();
+}
+
+void BiggieRecordStore::cappedTruncateAfter(OperationContext* opCtx, RecordId end, bool inclusive) {
+    // TODO : implement    
+}
+
+Status BiggieRecordStore::validate(OperationContext* opCtx,
+                                   ValidateCmdLevel level,
+                                   ValidateAdaptor* adaptor,
+                                   ValidateResults* results,
+                                   BSONObjBuilder* output) {
+    // TODO : implement
+    return Status::OK();
+}
+           
+void BiggieRecordStore::appendCustomStats(OperationContext* opCtx,
+                                          BSONObjBuilder* result,
+                                          double scale) const {
+    // TODO: Implement
+}
+
+Status BiggieRecordStore::touch(OperationContext* opCtx, BSONObjBuilder* output) const {
+    // TODO : implement
+    return Status::OK();
+}
+
+void BiggieRecordStore::waitForAllEarlierOplogWritesToBeVisible(OperationContext* opCtx) const {
+    // TODO : implement
+}
+
+void BiggieRecordStore::updateStatsAfterRepair(OperationContext* opCtx,
+                                        long long numRecords,
+                                        long long dataSize) {
+    // TODO: Implement
+}
+
+
+
+BiggieRecordStore::Cursor::Cursor(OperationContext* opCtx, const BiggieRecordStore& rs) {}
+
+boost::optional<Record> BiggieRecordStore::Cursor::next() {
+    return  boost::none;
+}
+
+boost::optional<Record> BiggieRecordStore::Cursor::seekExact(const RecordId& id) {
+    return boost::none;
+}
+
+void BiggieRecordStore::Cursor::save()  {}
+
+void BiggieRecordStore::Cursor::saveUnpositioned() {}
+
+bool BiggieRecordStore::Cursor::restore() {
+    return false;
+}
+
+void BiggieRecordStore::Cursor::detachFromOperationContext() {}
+void BiggieRecordStore::Cursor::reattachToOperationContext(OperationContext* opCtx) {}
+
+
 }  // namespace mongo

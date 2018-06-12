@@ -47,6 +47,11 @@ namespace mongo {
  * @param cappedMaxSize - required if isCapped. limit uses dataSize() in this impl.
  */
 class BiggieRecordStore : public RecordStore {
+    const bool _isCapped;
+    const int64_t _cappedMaxSize;
+    const int64_t _cappedMaxDocs;
+    CappedCallback* _cappedCallback;
+
     std::unique_ptr<BiggieStore> _store;
 
 public:
@@ -59,6 +64,13 @@ public:
 
     virtual const char* name() const;
 
+    virtual long long dataSize(OperationContext* opCtx) const; 
+    virtual long long numRecords(OperationContext* opCtx) const;
+    virtual bool isCapped() const;
+    virtual int64_t storageSize(OperationContext* opCtx,
+                                BSONObjBuilder* extraInfo = NULL,
+                                int infoLevel = 0) const;
+    
     virtual RecordData dataFor(OperationContext* opCtx, const RecordId& loc) const;
 
     virtual bool findRecord(OperationContext* opCtx, const RecordId& loc, RecordData* rd) const;
@@ -67,73 +79,60 @@ public:
 
     virtual StatusWith<RecordId> insertRecord(
         OperationContext* opCtx, const char* data, int len, Timestamp, bool enforceQuota);
+    
 
-    // virtual Status insertRecordsWithDocWriter(OperationContext* opCtx,
-    //                                           const DocWriter* const* docs,
-    //                                           const Timestamp*,
-    //                                           size_t nDocs,
-    //                                           RecordId* idsOut);
+    virtual Status insertRecordsWithDocWriter(OperationContext* opCtx,
+                                              const DocWriter* const* docs,
+                                              const Timestamp*,
+                                              size_t nDocs,
+                                              RecordId* idsOut);
 
-    // virtual Status updateRecord(OperationContext* opCtx,
-    //                             const RecordId& oldLocation,
-    //                             const char* data,
-    //                             int len,
-    //                             bool enforceQuota,
-    //                             UpdateNotifier* notifier);
+    virtual Status updateRecord(OperationContext* opCtx,
+                                const RecordId& oldLocation,
+                                const char* data,
+                                int len,
+                                bool enforceQuota,
+                                UpdateNotifier* notifier);
 
-    // virtual bool updateWithDamagesSupported() const;
+    virtual bool updateWithDamagesSupported() const;
 
-    // virtual StatusWith<RecordData> updateWithDamages(OperationContext* opCtx,
-    //                                                  const RecordId& loc,
-    //                                                  const RecordData& oldRec,
-    //                                                  const char* damageSource,
-    //                                                  const mutablebson::DamageVector& damages);
+    virtual StatusWith<RecordData> updateWithDamages(OperationContext* opCtx,
+                                                     const RecordId& loc,
+                                                     const RecordData& oldRec,
+                                                     const char* damageSource,
+                                                     const mutablebson::DamageVector& damages);
 
-    // std::unique_ptr<SeekableRecordCursor> getCursor(OperationContext* opCtx,
-    //                                                 bool forward) const final;
+    std::unique_ptr<SeekableRecordCursor> getCursor(OperationContext* opCtx,
+                                                    bool forward) const final;
 
-    // virtual Status truncate(OperationContext* opCtx);
+    virtual Status truncate(OperationContext* opCtx);
 
-    // virtual void cappedTruncateAfter(OperationContext* opCtx, RecordId end, bool inclusive);
+    virtual void cappedTruncateAfter(OperationContext* opCtx, RecordId end, bool inclusive);
 
-    // virtual Status validate(OperationContext* opCtx,
-    //                         ValidateCmdLevel level,
-    //                         ValidateAdaptor* adaptor,
-    //                         ValidateResults* results,
-    //                         BSONObjBuilder* output);
+    virtual Status validate(OperationContext* opCtx,
+                            ValidateCmdLevel level,
+                            ValidateAdaptor* adaptor,
+                            ValidateResults* results,
+                            BSONObjBuilder* output);
 
-    // virtual void appendCustomStats(OperationContext* opCtx,
-    //                                BSONObjBuilder* result,
-    //                                double scale) const;
+    virtual void appendCustomStats(OperationContext* opCtx,
+                                   BSONObjBuilder* result,
+                                   double scale) const;
 
-    // virtual Status touch(OperationContext* opCtx, BSONObjBuilder* output) const;
-
-    // virtual void increaseStorageSize(OperationContext* opCtx, int size, bool enforceQuota);
-
-    virtual int64_t storageSize(OperationContext* opCtx,
-                                BSONObjBuilder* extraInfo = NULL,
-                                int infoLevel = 0) const;
-
-    virtual long long dataSize(OperationContext* opCtx) const {
-        // TODO: Understand what this should return
-        return -1; 
-    }
-
-    virtual long long numRecords(OperationContext* opCtx) const {
-        return _store->size();
-    }
+    virtual Status touch(OperationContext* opCtx, BSONObjBuilder* output) const;
 
     // Use default implementation which returns boost::none
     // virtual boost::optional<RecordId> oplogStartHack(OperationContext* opCtx, const RecordId& startingPosition) const;
 
-    void waitForAllEarlierOplogWritesToBeVisible(OperationContext* opCtx) const override {}
+    // virtual void increaseStorageSize(OperationContext* opCtx, int size, bool enforceQuota);
+
+
+
+    void waitForAllEarlierOplogWritesToBeVisible(OperationContext* opCtx) const;
 
     virtual void updateStatsAfterRepair(OperationContext* opCtx,
                                         long long numRecords,
-                                        long long dataSize) {
-        // invariant(_data->records.size() == size_t(numRecords));
-        // _data->dataSize = dataSize;
-    }
+                                        long long dataSize);
 
 protected:
     uint64_t nextRecordId = 0; //TODO: make atomic for thread safety
@@ -166,12 +165,22 @@ protected:
 //         _cappedCallback = cb;
 //     }
 
-// private:
+private:
 //     class InsertChange;
 //     class RemoveChange;
 //     class TruncateChange;
 
-//     class Cursor;
+    class Cursor final : public SeekableRecordCursor {
+    public:
+        Cursor(OperationContext* opCtx, const BiggieRecordStore& rs);
+        boost::optional<Record> next() final;
+        boost::optional<Record> seekExact(const RecordId& id) final override;
+        void save() final;
+        void saveUnpositioned() final override;
+        bool restore() final;
+        void detachFromOperationContext() final;
+        void reattachToOperationContext(OperationContext* opCtx) final;
+    };
 //     class ReverseCursor;
 
 //     StatusWith<RecordId> extractAndCheckLocForOplog(const char* data, int len) const;
@@ -182,10 +191,7 @@ protected:
 //     void deleteRecord_inlock(OperationContext* opCtx, const RecordId& dl);
 
 //     // TODO figure out a proper solution to metadata
-//     const bool _isCapped;
-//     const int64_t _cappedMaxSize;
-//     const int64_t _cappedMaxDocs;
-//     CappedCallback* _cappedCallback;
+
 
 //     // This is the "persistent" data.
 //     struct Data {

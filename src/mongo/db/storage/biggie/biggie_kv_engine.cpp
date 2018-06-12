@@ -26,18 +26,23 @@
  *    it in the license file.
  */
 
-#include "mongo/platform/basic.h"
-
-#include "mongo/db/storage/biggie/biggie_kv_engine.h"
-
 #include "mongo/base/disallow_copying.h"
 #include "mongo/db/snapshot_window_options.h"
-#include "mongo/db/storage/ephemeral_for_test/ephemeral_for_test_record_store.h"
+#include "mongo/db/storage/biggie/biggie_kv_engine.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/sorted_data_interface.h"
+#include "mongo/platform/basic.h"
 #include "mongo/stdx/memory.h"
 
 namespace mongo {
+
+bool BiggieKVEngine::isCacheUnderPressure(OperationContext* opCtx) const {
+    return false; // ! might be under cache pressure eventually
+}
+void BiggieKVEngine::setCachePressureForTest(int pressure) {
+    // ! implement
+}
+
 
 class EmptyRecordCursor final : public SeekableRecordCursor {
 public:
@@ -52,221 +57,6 @@ public:
         return true;
     }
     void detachFromOperationContext() final {}
-    void reattachToOperationContext(OperationContext* opCtx) final {}
+    void reattachToOperationContext(OperationContext* opCtx) final {}    
 };
-
-class BiggieRecordStore : public RecordStore {
-public:
-    BiggieRecordStore(StringData ns, const CollectionOptions& options)
-        : RecordStore(ns), _options(options) {
-        _numInserts = 0;
-        _dummy = BSON("_id" << 1);
-    }
-
-    virtual const char* name() const {
-        return "biggie";
-    }
-
-    virtual void setCappedCallback(CappedCallback*) {}
-
-    virtual long long dataSize(OperationContext* opCtx) const {
-        return 0;
-    }
-
-    virtual long long numRecords(OperationContext* opCtx) const {
-        return 0;
-    }
-
-    virtual bool isCapped() const {
-        return _options.capped;
-    }
-
-    virtual int64_t storageSize(OperationContext* opCtx,
-                                BSONObjBuilder* extraInfo = NULL,
-                                int infoLevel = 0) const {
-        return 0;
-    }
-
-    virtual RecordData dataFor(OperationContext* opCtx, const RecordId& loc) const {
-        return RecordData(_dummy.objdata(), _dummy.objsize());
-    }
-
-    virtual bool findRecord(OperationContext* opCtx, const RecordId& loc, RecordData* rd) const {
-        return false;
-    }
-
-    virtual void deleteRecord(OperationContext* opCtx, const RecordId& dl) {}
-
-    virtual StatusWith<RecordId> insertRecord(
-        OperationContext* opCtx, const char* data, int len, Timestamp, bool enforceQuota) {
-        _numInserts++;
-        return StatusWith<RecordId>(RecordId(6, 4));
-    }
-
-    virtual Status insertRecordsWithDocWriter(OperationContext* opCtx,
-                                              const DocWriter* const* docs,
-                                              const Timestamp*,
-                                              size_t nDocs,
-                                              RecordId* idsOut) {
-        _numInserts += nDocs;
-        if (idsOut) {
-            for (size_t i = 0; i < nDocs; i++) {
-                idsOut[i] = RecordId(6, 4);
-            }
-        }
-        return Status::OK();
-    }
-
-    virtual Status updateRecord(OperationContext* opCtx,
-                                const RecordId& oldLocation,
-                                const char* data,
-                                int len,
-                                bool enforceQuota,
-                                UpdateNotifier* notifier) {
-        return Status::OK();
-    }
-
-    virtual bool updateWithDamagesSupported() const {
-        return false;
-    }
-
-    virtual StatusWith<RecordData> updateWithDamages(OperationContext* opCtx,
-                                                     const RecordId& loc,
-                                                     const RecordData& oldRec,
-                                                     const char* damageSource,
-                                                     const mutablebson::DamageVector& damages) {
-        MONGO_UNREACHABLE;
-    }
-
-
-    std::unique_ptr<SeekableRecordCursor> getCursor(OperationContext* opCtx,
-                                                    bool forward) const final {
-        return stdx::make_unique<EmptyRecordCursor>();
-    }
-
-    virtual Status truncate(OperationContext* opCtx) {
-        return Status::OK();
-    }
-
-    virtual void cappedTruncateAfter(OperationContext* opCtx, RecordId end, bool inclusive) {}
-
-    virtual Status validate(OperationContext* opCtx,
-                            ValidateCmdLevel level,
-                            ValidateAdaptor* adaptor,
-                            ValidateResults* results,
-                            BSONObjBuilder* output) {
-        return Status::OK();
-    }
-
-    virtual void appendCustomStats(OperationContext* opCtx,
-                                   BSONObjBuilder* result,
-                                   double scale) const {
-        result->appendNumber("numInserts", _numInserts);
-    }
-
-    virtual Status touch(OperationContext* opCtx, BSONObjBuilder* output) const {
-        return Status::OK();
-    }
-
-    void waitForAllEarlierOplogWritesToBeVisible(OperationContext* opCtx) const override {}
-
-    virtual void updateStatsAfterRepair(OperationContext* opCtx,
-                                        long long numRecords,
-                                        long long dataSize) {}
-
-private:
-    CollectionOptions _options;
-    long long _numInserts;
-    BSONObj _dummy;
-};
-
-class BiggieSortedDataBuilderInterface : public SortedDataBuilderInterface {
-    MONGO_DISALLOW_COPYING(BiggieSortedDataBuilderInterface);
-
-public:
-    BiggieSortedDataBuilderInterface() {}
-
-    virtual Status addKey(const BSONObj& key, const RecordId& loc) {
-        return Status::OK();
-    }
-};
-
-class BiggieSortedDataInterface : public SortedDataInterface {
-public:
-    virtual ~BiggieSortedDataInterface() {}
-
-    virtual SortedDataBuilderInterface* getBulkBuilder(OperationContext* opCtx, bool dupsAllowed) {
-        return new BiggieSortedDataBuilderInterface();
-    }
-
-    virtual Status insert(OperationContext* opCtx,
-                          const BSONObj& key,
-                          const RecordId& loc,
-                          bool dupsAllowed) {
-        return Status::OK();
-    }
-
-    virtual void unindex(OperationContext* opCtx,
-                         const BSONObj& key,
-                         const RecordId& loc,
-                         bool dupsAllowed) {}
-
-    virtual Status dupKeyCheck(OperationContext* opCtx, const BSONObj& key, const RecordId& loc) {
-        return Status::OK();
-    }
-
-    virtual void fullValidate(OperationContext* opCtx,
-                              long long* numKeysOut,
-                              ValidateResults* fullResults) const {}
-
-    virtual bool appendCustomStats(OperationContext* opCtx,
-                                   BSONObjBuilder* output,
-                                   double scale) const {
-        return false;
-    }
-
-    virtual long long getSpaceUsedBytes(OperationContext* opCtx) const {
-        return 0;
-    }
-
-    virtual bool isEmpty(OperationContext* opCtx) {
-        return true;
-    }
-
-    virtual std::unique_ptr<SortedDataInterface::Cursor> newCursor(OperationContext* opCtx,
-                                                                   bool isForward) const {
-        return {};
-    }
-
-    virtual Status initAsEmpty(OperationContext* opCtx) {
-        return Status::OK();
-    }
-};
-
-
-std::unique_ptr<RecordStore> BiggieKVEngine::getRecordStore(OperationContext* opCtx,
-                                                             StringData ns,
-                                                             StringData ident,
-                                                             const CollectionOptions& options) {
-    if (ident == "_mdb_catalog") {
-        return stdx::make_unique<EphemeralForTestRecordStore>(ns, &_catalogInfo);
-    }
-    return stdx::make_unique<BiggieRecordStore>(ns, options);
-}
-
-SortedDataInterface* BiggieKVEngine::getSortedDataInterface(OperationContext* opCtx,
-                                                             StringData ident,
-                                                             const IndexDescriptor* desc) {
-    return new BiggieSortedDataInterface();
-} 
-
-bool BiggieKVEngine::isCacheUnderPressure(OperationContext* opCtx) const {
-    return (_cachePressureForTest >= snapshotWindowParams.cachePressureThreshold.load());
-}
-
-void BiggieKVEngine::setCachePressureForTest(int pressure) {
-    invariant(pressure >= 0 && pressure <= 100);
-    _cachePressureForTest = pressure;
-}
-
 }  // namespace mongo
