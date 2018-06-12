@@ -30,17 +30,19 @@
  */
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
-#include <cstring>
-#include <utility>
 
 #include "mongo/db/storage/biggie/biggie_record_store.h"
-
-// #include "mongo/db/jsobj.h"
-// #include "mongo/db/namespace_string.h"
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/biggie/biggie_store.h"
 #include "mongo/db/storage/biggie/store.h"
 #include "mongo/stdx/memory.h"
+
+#include <cstring>
+#include <memory>
+#include <utility>
+
+// #include "mongo/db/jsobj.h"
+// #include "mongo/db/namespace_string.h"
 // #inclu de "mongo/db/storage/oplog_hack.h"
 // #include "mongo/db/storage/recovery_unit.h"
 // #include "mongo/util/log.h"
@@ -50,18 +52,17 @@
 namespace mongo {
 
 BiggieRecordStore::BiggieRecordStore(StringData ns,
-                                     std::shared_ptr<void>* dataInOut,
+                                     std::shared_ptr<BiggieStore> data,
                                      bool isCapped,
                                      int64_t cappedMaxSize,
                                      int64_t cappedMaxDocs,
                                      CappedCallback* cappedCallback)
     : RecordStore(ns),
+      _data(data),
       _isCapped(isCapped),
       _cappedMaxSize(cappedMaxSize),
       _cappedMaxDocs(cappedMaxDocs),
-      _cappedCallback(cappedCallback) {
-    // TODO: Finish constructor, using ephemeral for test, what are these arguments
-}
+      _cappedCallback(cappedCallback) {}
 
 const char* BiggieRecordStore::name() const {
     return "Biggie";
@@ -74,7 +75,7 @@ long long BiggieRecordStore::dataSize(OperationContext* opCtx) const {
 
 long long BiggieRecordStore::numRecords(OperationContext* opCtx) const {
     // TODO: Return a real answer here
-    return (long long)_store->size();
+    return (long long)_data->size();
 }
 
 bool BiggieRecordStore::isCapped() const {
@@ -83,7 +84,7 @@ bool BiggieRecordStore::isCapped() const {
 int64_t BiggieRecordStore::storageSize(OperationContext* opCtx,
                                        BSONObjBuilder* extraInfo,
                                        int infoLevel) const {
-    return 100;  // ? Is this implemented here, or by BiggieStore
+    return 100;  //? Is this implemented here, or by BiggieStore
 }
 
 RecordData BiggieRecordStore::dataFor(OperationContext* opCtx, const RecordId& loc) const {
@@ -114,7 +115,7 @@ StatusWith<RecordId> BiggieRecordStore::insertRecord(
 
     Key key(key_ptr, num_chunks);
     Store::Value v(key, std::string(data, len));
-    _store->insert(std::move(v));
+    _data->insert(std::move(v));
 
     RecordId rID(thisRecordId);
     return StatusWith<RecordId>(rID);
@@ -166,7 +167,7 @@ Status BiggieRecordStore::truncate(OperationContext* opCtx) {
 }
 
 void BiggieRecordStore::cappedTruncateAfter(OperationContext* opCtx, RecordId end, bool inclusive) {
-    // TODO : implement    
+    // TODO : implement
 }
 
 Status BiggieRecordStore::validate(OperationContext* opCtx,
@@ -177,7 +178,7 @@ Status BiggieRecordStore::validate(OperationContext* opCtx,
     // TODO : implement
     return Status::OK();
 }
-           
+
 void BiggieRecordStore::appendCustomStats(OperationContext* opCtx,
                                           BSONObjBuilder* result,
                                           double scale) const {
@@ -194,24 +195,23 @@ void BiggieRecordStore::waitForAllEarlierOplogWritesToBeVisible(OperationContext
 }
 
 void BiggieRecordStore::updateStatsAfterRepair(OperationContext* opCtx,
-                                        long long numRecords,
-                                        long long dataSize) {
+                                               long long numRecords,
+                                               long long dataSize) {
     // TODO: Implement
 }
-
 
 
 BiggieRecordStore::Cursor::Cursor(OperationContext* opCtx, const BiggieRecordStore& rs) {}
 
 boost::optional<Record> BiggieRecordStore::Cursor::next() {
-    return  boost::none;
+    return boost::none;
 }
 
 boost::optional<Record> BiggieRecordStore::Cursor::seekExact(const RecordId& id) {
     return boost::none;
 }
 
-void BiggieRecordStore::Cursor::save()  {}
+void BiggieRecordStore::Cursor::save() {}
 
 void BiggieRecordStore::Cursor::saveUnpositioned() {}
 

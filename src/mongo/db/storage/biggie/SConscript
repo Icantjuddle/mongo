@@ -10,6 +10,7 @@ env.Library(
         'biggie_kv_engine.cpp',
         'biggie_store.cpp',
         'biggie_record_store.cpp',
+        'biggie_sorted_impl.cpp'
     ],
     LIBDEPS= [
         '$BUILD_DIR/mongo/db/storage/ephemeral_for_test/ephemeral_for_test_record_store',

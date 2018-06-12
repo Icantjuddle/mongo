@@ -47,16 +47,16 @@ namespace mongo {
  * @param cappedMaxSize - required if isCapped. limit uses dataSize() in this impl.
  */
 class BiggieRecordStore : public RecordStore {
+    std::shared_ptr<BiggieStore> _data;
     const bool _isCapped;
     const int64_t _cappedMaxSize;
     const int64_t _cappedMaxDocs;
     CappedCallback* _cappedCallback;
 
-    std::unique_ptr<BiggieStore> _store;
 
 public:
     explicit BiggieRecordStore(StringData ns,
-                                         std::shared_ptr<void>* dataInOut,
+                                         std::shared_ptr<BiggieStore> data,
                                          bool isCapped = false,
                                          int64_t cappedMaxSize = -1,
                                          int64_t cappedMaxDocs = -1,

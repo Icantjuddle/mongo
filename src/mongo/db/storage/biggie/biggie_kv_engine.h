@@ -42,6 +42,7 @@ class JournalListener;
  * The biggie storage engine is intended for unit and performance testing.
  */
 class BiggieKVEngine : public KVEngine {
+    std::shared_ptr<BiggieStore> _store; //ALL our data
 public:
 
     BiggieKVEngine() : KVEngine() {}
@@ -63,7 +64,9 @@ public:
                                                         StringData ns,
                                                         StringData ident,
                                                         const CollectionOptions& options) {
-        return NULL; // TODO return a real thing 
+        // The engine passes it a new RecordStore based on the single instance
+        // of the underlying data structure 
+        return std::make_unique<BiggieRecordStore>(ns, _store); // TODO deal with ident, options
     }
 
     virtual Status createSortedDataInterface(OperationContext* opCtx,

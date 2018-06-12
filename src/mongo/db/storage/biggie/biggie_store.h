@@ -30,10 +30,12 @@
 #include "mongo/db/storage/biggie/store.h"
 
 namespace mongo {
-class BiggieStore: public Store {
+class BiggieStore : public Store {
 
     std::map<Key, Mapped> map;
     public:
+        BiggieStore();
+
         bool empty() const;
 
         Store::Size size() const ;
