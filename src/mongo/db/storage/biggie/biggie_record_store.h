@@ -34,6 +34,7 @@
 #include <map>
 
 #include "mongo/db/concurrency/d_concurrency.h"
+#include "mongo/db/storage/biggie/biggie_store.h"
 #include "mongo/db/storage/capped_callback.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/stdx/mutex.h"
@@ -46,6 +47,8 @@ namespace mongo {
  * @param cappedMaxSize - required if isCapped. limit uses dataSize() in this impl.
  */
 class BiggieRecordStore : public RecordStore {
+    std::unique_ptr<BiggieStore> _store;
+
 public:
     explicit BiggieRecordStore(StringData ns,
                                          std::shared_ptr<void>* dataInOut,
@@ -112,23 +115,24 @@ public:
                                 int infoLevel = 0) const;
 
     virtual long long dataSize(OperationContext* opCtx) const {
-        return _data->dataSize;
+        // TODO: Understand what this should return
+        return -1; 
     }
 
     virtual long long numRecords(OperationContext* opCtx) const {
-        return _data->records.size();
+        return _store->size();
     }
 
-    virtual boost::optional<RecordId> oplogStartHack(OperationContext* opCtx,
-                                                     const RecordId& startingPosition) const;
+    // Use default implementation which returns boost::none
+    // virtual boost::optional<RecordId> oplogStartHack(OperationContext* opCtx, const RecordId& startingPosition) const;
 
     void waitForAllEarlierOplogWritesToBeVisible(OperationContext* opCtx) const override {}
 
     virtual void updateStatsAfterRepair(OperationContext* opCtx,
                                         long long numRecords,
                                         long long dataSize) {
-        invariant(_data->records.size() == size_t(numRecords));
-        _data->dataSize = dataSize;
+        // invariant(_data->records.size() == size_t(numRecords));
+        // _data->dataSize = dataSize;
     }
 
 protected:

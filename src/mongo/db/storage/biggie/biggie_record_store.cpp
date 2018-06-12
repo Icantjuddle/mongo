@@ -40,7 +40,7 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/storage/biggie/biggie_store.h"
 #include "mongo/db/storage/biggie/store.h"
-// #include "mongo/db/storage/oplog_hack.h"
+// #inclu de "mongo/db/storage/oplog_hack.h"
 // #include "mongo/db/storage/recovery_unit.h"
 // #include "mongo/stdx/memory.h"
 // #include "mongo/util/log.h"
@@ -48,8 +48,6 @@
 // #include "mongo/util/unowned_ptr.h"
 
 namespace mongo {
-
-std::unique_ptr<BiggieStore> store;
 
 const char* BiggieRecordStore::name() const {
     return "Biggie";
@@ -80,8 +78,8 @@ StatusWith<RecordId> BiggieRecordStore::insertRecord(
     std::memcpy(key_ptr, &thisRecordId, num_chunks);
 
     Key key(key_ptr, num_chunks);
-    Value v(key, std::string(data, len));
-    store->insert(v);
+    Store::Value v(key, std::string(data, len));
+    _store->insert(std::move(v));
  
     RecordId rID(thisRecordId);
     return StatusWith<RecordId>(rID);

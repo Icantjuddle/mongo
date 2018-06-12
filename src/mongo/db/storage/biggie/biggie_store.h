@@ -25,6 +25,7 @@
  * delete this exception statement from all source files in the program,
  * then also delete it in the license file.
 = */
+#pragma once 
 
 #include "mongo/db/storage/biggie/store.h"
 
@@ -35,13 +36,13 @@ class BiggieStore: public Store {
     public:
         bool empty() const;
 
-        Size size() const ;
+        Store::Size size() const ;
 
         void clear() noexcept;
 
         bool insert (Value&& value);
 
-        Size erase (const Key& key);
+        Store::Size erase (const Key& key);
 
         Store& merge3(const Store& base, const Store& other);
 };

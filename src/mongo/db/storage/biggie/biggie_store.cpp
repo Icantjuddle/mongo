@@ -27,7 +27,7 @@
  */
 
 #include "mongo/db/storage/biggie/biggie_store.h"
-// #include "mongo/db/storage/biggie/store.h"
+#include "mongo/db/storage/biggie/store.h"
 
 namespace mongo {
 
@@ -35,7 +35,7 @@ bool BiggieStore::empty() const {
     return map.empty();
 }
 
-Size BiggieStore::size() const {
+Store::Size BiggieStore::size() const {
     return map.size();
 }
 
@@ -43,7 +43,7 @@ void BiggieStore::clear() noexcept {
     map.clear();
 }
 
-bool BiggieStore::insert(Value&& value) {
+bool BiggieStore::insert(Store::Value&& value) {
     try {
         map[value.first] = value.second;
 
@@ -53,7 +53,7 @@ bool BiggieStore::insert(Value&& value) {
     return true;
 }
 
-Size BiggieStore::erase(const Key& key) {
+Store::Size BiggieStore::erase(const Key& key) {
     return map.erase(key);
 }
 
