@@ -75,7 +75,7 @@ long long BiggieRecordStore::dataSize(OperationContext* opCtx) const {
 
 long long BiggieRecordStore::numRecords(OperationContext* opCtx) const {
     // TODO: Return a real answer here
-    return (long long)_data->size();
+    return 0; //// (long long)_data->size();
 }
 
 bool BiggieRecordStore::isCapped() const {
@@ -115,7 +115,7 @@ StatusWith<RecordId> BiggieRecordStore::insertRecord(
 
     Key key(key_ptr, num_chunks);
     Store::Value v(key, std::string(data, len));
-    _data->insert(std::move(v));
+    // _data->insert(std::move(v));
 
     RecordId rID(thisRecordId);
     return StatusWith<RecordId>(rID);

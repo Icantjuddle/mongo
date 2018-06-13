@@ -35,8 +35,13 @@
 #include "mongo/util/mongoutils/str.h"
 
 namespace mongo {
+
+Status BiggieSortedBuilderImpl::addKey(const BSONObj& key, const RecordId& loc) {
+    return Status::OK();
+}
+
 SortedDataBuilderInterface* BiggieSortedImpl::getBulkBuilder(OperationContext *opCtx, bool dupsAllowed) {
-    return new BiggieSortedImpl(); //TODO: return real thing
+    return new BiggieSortedBuilderImpl(); //TODO: return real thing
 }
 
 Status BiggieSortedImpl::insert(OperationContext *opCtx, const BSONObj &key, const RecordId &loc, bool dupsAllowed) {
@@ -61,7 +66,8 @@ long long BiggieSortedImpl::getSpaceUsedBytes(OperationContext *opCtx) const {
 bool BiggieSortedImpl::isEmpty (OperationContext *opCtx) {
     return true; //TODO: Implement
 }
-std::unique_ptr<BiggieSortedImpl::Cursor> BiggieSortedImpl::newCursor(OperationContext *opCtx, bool isForward) const {
+
+std::unique_ptr<SortedDataInterface::Cursor> BiggieSortedImpl::newCursor(OperationContext *opCtx, bool isForward) const {
     return std::make_unique<BiggieSortedImpl::Cursor>(opCtx, isForward); //TODO: Implement
 }
 Status BiggieSortedImpl::initAsEmpty(OperationContext *opCtx) {
@@ -69,18 +75,19 @@ Status BiggieSortedImpl::initAsEmpty(OperationContext *opCtx) {
 }
 
 // Cursor
+BiggieSortedImpl::Cursor::Cursor(OperationContext* opCtx, bool isForward) : _opCtx(opCtx), _isForward(isForward) {}
 
 void BiggieSortedImpl::Cursor::setEndPosition(const BSONObj& key, bool inclusive) {
     return;
 }
 
-boost::optional<IndexKeyEntry> BiggieSortedImpl::Cursor::next(RequestedInfo parts = kKeyAndLoc) {
+boost::optional<IndexKeyEntry> BiggieSortedImpl::Cursor::next(RequestedInfo parts) {
     return boost::none;
 }
 
 boost::optional<IndexKeyEntry> BiggieSortedImpl::Cursor::seek(const BSONObj& key,
                                                     bool inclusive,
-                                                    RequestedInfo parts = kKeyAndLoc) {
+                                                    RequestedInfo parts) {
     return boost::none;
 }
 
@@ -102,15 +109,6 @@ void BiggieSortedImpl::Cursor::detachFromOperationContext() {
 
 void BiggieSortedImpl::Cursor::reattachToOperationContext(OperationContext* opCtx) {
     return;
-}
-
-std::unique_ptr<BiggieSortedImpl::Cursor> BiggieSortedImpl::Cursor::newCursor(OperationContext* opCtx,
-                                              bool isForward) const {
-    return std::make_unique<BiggieSortedImpl::Cursor>(opCtx);
-}
-
-Status BiggieSortedImpl::Cursor::initAsEmpty(OperationContext* opCtx) {
-    return Status::OK();
 }
 
 }

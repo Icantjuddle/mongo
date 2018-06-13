@@ -27,12 +27,19 @@
 *    exception statement from all source files in the program, then also delete
 *    it in the license file.
 */
-
-#include "mongo/db/storage/sorted_data_interface.h"
-
 #pragma once
 
+#include "mongo/db/storage/sorted_data_interface.h"
+#include "mongo/db/storage/biggie/biggie_store.h"
+
 namespace mongo {
+
+class BiggieSortedBuilderImpl : public SortedDataBuilderInterface {
+public:
+    virtual Status addKey(const BSONObj& key, const RecordId& loc);
+};
+
+
 class BiggieSortedImpl : public SortedDataInterface {
 // all of these probably do not need to be public
 public:
@@ -54,12 +61,16 @@ public:
     virtual bool isEmpty (OperationContext *opCtx);
     // what cursor is this
     // this is not the right cursor I think
-    virtual std::unique_ptr<BiggieSortedImpl::Cursor>newCursor(OperationContext *opCtx, bool isForward=true) const;
+    virtual std::unique_ptr<SortedDataInterface::Cursor>newCursor(OperationContext *opCtx, bool isForward=true) const override;
     virtual Status initAsEmpty(OperationContext *opCtx);
 
     class Cursor final : public SortedDataInterface::Cursor {
+        OperationContext* _opCtx;
+        bool _isForward;
     // should all of these be public?
     public:
+        // TODO : This will need more arguments later on for a real cursor
+        Cursor(OperationContext *opCtx, bool isForward);
         virtual void setEndPosition(const BSONObj& key, bool inclusive);
         virtual boost::optional<IndexKeyEntry> next(RequestedInfo parts = kKeyAndLoc);
         virtual boost::optional<IndexKeyEntry> seek(const BSONObj& key,
@@ -71,9 +82,6 @@ public:
         virtual void restore();
         virtual void detachFromOperationContext();
         virtual void reattachToOperationContext(OperationContext* opCtx);
-        virtual std::unique_ptr<Cursor> newCursor(OperationContext* opCtx,
-                                              bool isForward = true) const;
-        virtual Status initAsEmpty(OperationContext* opCtx);
     };
 };
 }

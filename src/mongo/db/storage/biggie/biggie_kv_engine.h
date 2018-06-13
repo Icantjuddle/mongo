@@ -33,6 +33,7 @@
 #include "mongo/db/storage/kv/kv_engine.h"
 #include "mongo/db/storage/recovery_unit_noop.h"
 #include "mongo/db/storage/biggie/biggie_record_store.h"
+#include "mongo/db/storage/biggie/biggie_sorted_impl.h"
 
 namespace mongo {
 
@@ -80,7 +81,7 @@ public:
     virtual SortedDataInterface* getSortedDataInterface(OperationContext* opCtx,
                                                         StringData ident,
                                                         const IndexDescriptor* desc) {
-        return nullptr; // TODO : implement later                                                            
+        return new BiggieSortedImpl(); // TODO : implement later                                                            
     }
 
     virtual Status dropIdent(OperationContext* opCtx, StringData ident) {
