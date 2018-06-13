@@ -57,6 +57,7 @@ public:
                                      StringData ns,
                                      StringData ident,
                                      const CollectionOptions& options) {
+        // TODO: implement
         return Status::OK();
     }
 
@@ -65,7 +66,8 @@ public:
                                                         StringData ident,
                                                         const CollectionOptions& options) {
         // The engine passes it a new RecordStore based on the single instance
-        // of the underlying data structure 
+        // of the underlying data structure
+        // why is this a unique pointer
         return std::make_unique<BiggieRecordStore>(ns, _store); // TODO deal with ident, options
     }
 

@@ -47,6 +47,7 @@ namespace mongo {
  * @param cappedMaxSize - required if isCapped. limit uses dataSize() in this impl.
  */
 class BiggieRecordStore : public RecordStore {
+    // this really should be a map; eventually we will probably need to code our own data structure for this
     std::shared_ptr<BiggieStore> _data;
     const bool _isCapped;
     const int64_t _cappedMaxSize;

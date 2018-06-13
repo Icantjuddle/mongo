@@ -31,7 +31,6 @@
 
 namespace mongo {
 class BiggieStore : public Store {
-
     std::map<Key, Mapped> map;
     public:
         BiggieStore();

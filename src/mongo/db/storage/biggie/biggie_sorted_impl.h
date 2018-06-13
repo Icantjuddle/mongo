@@ -34,7 +34,16 @@
 
 namespace mongo {
 class BiggieSortedImpl : public SortedDataInterface {
+// all of these probably do not need to be public
 public:
+    // this definitely needs to change in the future
+    // also, what is ephemeralForTest indexSet referring to
+    std::map<std::string, std::string>_data;
+    // this constructor eventually needs to take arguments like in ephemeralForTest
+    BiggieSortedImpl(){};
+
+    // should all these functions be public
+
     virtual SortedDataBuilderInterface* getBulkBuilder(OperationContext *opCtx, bool dupsAllowed);
     virtual Status insert(OperationContext *opCtx, const BSONObj &key, const RecordId &loc, bool dupsAllowed);
     virtual void unindex(OperationContext *opCtx, const BSONObj &key, const RecordId &loc, bool dupsAllowed);
@@ -47,5 +56,24 @@ public:
     // this is not the right cursor I think
     virtual std::unique_ptr<BiggieSortedImpl::Cursor>newCursor(OperationContext *opCtx, bool isForward=true) const;
     virtual Status initAsEmpty(OperationContext *opCtx);
+
+    class Cursor final : public SortedDataInterface::Cursor {
+    // should all of these be public?
+    public:
+        virtual void setEndPosition(const BSONObj& key, bool inclusive);
+        virtual boost::optional<IndexKeyEntry> next(RequestedInfo parts = kKeyAndLoc);
+        virtual boost::optional<IndexKeyEntry> seek(const BSONObj& key,
+                                                    bool inclusive,
+                                                    RequestedInfo parts = kKeyAndLoc);
+        virtual boost::optional<IndexKeyEntry> seek(const IndexSeekPoint& seekPoint,
+                                                    RequestedInfo parts = kKeyAndLoc);
+        virtual void save();
+        virtual void restore();
+        virtual void detachFromOperationContext();
+        virtual void reattachToOperationContext(OperationContext* opCtx);
+        virtual std::unique_ptr<Cursor> newCursor(OperationContext* opCtx,
+                                              bool isForward = true) const;
+        virtual Status initAsEmpty(OperationContext* opCtx);
+    };
 };
 }

@@ -36,7 +36,7 @@
 
 namespace mongo {
 SortedDataBuilderInterface* BiggieSortedImpl::getBulkBuilder(OperationContext *opCtx, bool dupsAllowed) {
-    return nullptr; //TODO: return real thing
+    return new BiggieSortedImpl(); //TODO: return real thing
 }
 
 Status BiggieSortedImpl::insert(OperationContext *opCtx, const BSONObj &key, const RecordId &loc, bool dupsAllowed) {
@@ -62,9 +62,55 @@ bool BiggieSortedImpl::isEmpty (OperationContext *opCtx) {
     return true; //TODO: Implement
 }
 std::unique_ptr<BiggieSortedImpl::Cursor> BiggieSortedImpl::newCursor(OperationContext *opCtx, bool isForward) const {
-    return NULL; //TODO: Implement
+    return std::make_unique<BiggieSortedImpl::Cursor>(opCtx, isForward); //TODO: Implement
 }
 Status BiggieSortedImpl::initAsEmpty(OperationContext *opCtx) {
     return Status::OK(); //TODO: Implement
 }
+
+// Cursor
+
+void BiggieSortedImpl::Cursor::setEndPosition(const BSONObj& key, bool inclusive) {
+    return;
+}
+
+boost::optional<IndexKeyEntry> BiggieSortedImpl::Cursor::next(RequestedInfo parts = kKeyAndLoc) {
+    return boost::none;
+}
+
+boost::optional<IndexKeyEntry> BiggieSortedImpl::Cursor::seek(const BSONObj& key,
+                                                    bool inclusive,
+                                                    RequestedInfo parts = kKeyAndLoc) {
+    return boost::none;
+}
+
+boost::optional<IndexKeyEntry> BiggieSortedImpl::Cursor::seek(const IndexSeekPoint& seekPoint, RequestedInfo parts) {
+    return boost::none;
+}
+
+void BiggieSortedImpl::Cursor::save() {
+    return;
+}
+
+void BiggieSortedImpl::Cursor::restore() {
+    return;
+}
+
+void BiggieSortedImpl::Cursor::detachFromOperationContext() {
+    return;
+}
+
+void BiggieSortedImpl::Cursor::reattachToOperationContext(OperationContext* opCtx) {
+    return;
+}
+
+std::unique_ptr<BiggieSortedImpl::Cursor> BiggieSortedImpl::Cursor::newCursor(OperationContext* opCtx,
+                                              bool isForward) const {
+    return std::make_unique<BiggieSortedImpl::Cursor>(opCtx);
+}
+
+Status BiggieSortedImpl::Cursor::initAsEmpty(OperationContext* opCtx) {
+    return Status::OK();
+}
+
 }
