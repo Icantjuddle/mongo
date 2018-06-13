@@ -38,7 +38,7 @@ class BiggieSortedImpl : public SortedDataInterface {
 public:
     // this definitely needs to change in the future
     // also, what is ephemeralForTest indexSet referring to
-    std::map<std::string, std::string>_data;
+    std::shared_ptr<BiggieStore> _data;
     // this constructor eventually needs to take arguments like in ephemeralForTest
     BiggieSortedImpl(){};
 
