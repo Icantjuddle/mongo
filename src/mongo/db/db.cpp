@@ -630,7 +630,7 @@ ExitCode _initAndListen(int listenPort) {
     } else if (replSettings.usingReplSets()) {
         kind = LogicalSessionCacheServer::kReplicaSet;
     }
-    
+
     auto sessionCache = makeLogicalSessionCacheD(serviceContext, kind);
     LogicalSessionCache::set(serviceContext, std::move(sessionCache));
 
