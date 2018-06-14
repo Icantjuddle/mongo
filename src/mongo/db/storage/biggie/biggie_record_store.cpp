@@ -71,7 +71,7 @@ BiggieRecordStore::BiggieRecordStore(StringData ns,
     }
 
 const char* BiggieRecordStore::name() const {
-    return "Biggie";
+    return "biggie";
 }
 
 long long BiggieRecordStore::dataSize(OperationContext* opCtx) const {

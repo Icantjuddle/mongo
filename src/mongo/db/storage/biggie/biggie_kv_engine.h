@@ -96,6 +96,10 @@ public:
         return false;
     }
 
+    virtual bool supportsCappedCollections() const {
+        return false;
+    }
+
     /**
      * biggie does no journaling, so don't report the engine as durable.
      */
