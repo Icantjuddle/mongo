@@ -52,6 +52,7 @@ class BiggieRecordStore : public RecordStore {
     const int64_t _cappedMaxSize;
     const int64_t _cappedMaxDocs;
     CappedCallback* _cappedCallback;
+    
 
 
 public:
@@ -166,6 +167,8 @@ protected:
 //     }
 
 private:
+    // TODO : needs to be changed
+    BSONObj _dummy;
 //     class InsertChange;
 //     class RemoveChange;
 //     class TruncateChange;

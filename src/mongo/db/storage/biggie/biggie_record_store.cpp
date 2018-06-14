@@ -29,6 +29,10 @@
  *    it in the license file.
  */
 
+
+// ALERT: need to remodify db.cpp to actually create an fcv on line about 422 (!storageGlobalParams.readOnly && (storageGlobalParams.engine != "devnull");)
+// once this stuff actually gets implemented!!!
+
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kStorage
 
 #include "mongo/db/storage/biggie/biggie_record_store.h"
@@ -62,7 +66,9 @@ BiggieRecordStore::BiggieRecordStore(StringData ns,
       _isCapped(isCapped),
       _cappedMaxSize(cappedMaxSize),
       _cappedMaxDocs(cappedMaxDocs),
-      _cappedCallback(cappedCallback) {}
+      _cappedCallback(cappedCallback) {
+        _dummy = BSON("_id" << 1);
+    }
 
 const char* BiggieRecordStore::name() const {
     return "Biggie";
@@ -88,9 +94,8 @@ int64_t BiggieRecordStore::storageSize(OperationContext* opCtx,
 }
 
 RecordData BiggieRecordStore::dataFor(OperationContext* opCtx, const RecordId& loc) const {
-    RecordData rd;
-    findRecord(opCtx, loc, &rd);
-    return rd;  // should use std::move?
+    // TODO : needs to be changed
+    return RecordData(_dummy.objdata(), _dummy.objsize());
 }
 
 bool BiggieRecordStore::findRecord(OperationContext* opCtx,

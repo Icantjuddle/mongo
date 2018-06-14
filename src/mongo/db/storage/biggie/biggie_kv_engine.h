@@ -139,5 +139,7 @@ private:
     std::shared_ptr<void> _catalogInfo;
 
     int _cachePressureForTest;
+
+    BSONObj _dummy;
 };
 }
