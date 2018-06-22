@@ -45,30 +45,30 @@ class merge_conflict_exception : std::exception {
 };
 
 using T = std::string;
-using Key = std::pair<uint8_t*, size_t>;
+using Key = std::string;
 
 class Store {
 public:
-    using Mapped = T;
-    using Value = std::pair<const Key, Mapped>;
-    using Allocator = std::allocator<Value>;
-    using Pointer = std::allocator_traits<Allocator>::pointer;
-    using ConstPointer = std::allocator_traits<Allocator>::const_pointer;
-    using Size = std::size_t;
+    using mapped_type = T;
+    using value_type = std::pair<const Key, mapped_type>;
+    using allocator_type = std::allocator<value_type>;
+    using pointer = std::allocator_traits<allocator_type>::pointer;
+    using const_pointer = std::allocator_traits<allocator_type>::const_pointer;
+    using size_type = std::size_t;
 
     class Iterator {
     private:
         friend class Store;
-        std::map<Key, Mapped>::iterator iter;
+        std::map<Key, mapped_type>::iterator iter;
 
     public:
         using iterator_category = std::forward_iterator_tag;
-        using value_type = Value;
+        using value_type = value_type;
         using difference_type = std::ptrdiff_t;
-        using pointer = Store::Pointer;
-        using reference = Value&;
+        using pointer = Store::pointer;
+        using reference = value_type&;
 
-        Iterator(std::map<Key, Mapped>::iterator iter);
+        Iterator(std::map<Key, mapped_type>::iterator iter);
         Iterator& operator++();
         bool operator==(const Iterator& other) const;
         bool operator!=(const Iterator& other) const;
@@ -79,16 +79,16 @@ public:
     class ConstIterator {
     private:
         friend class Store;
-        std::map<Key, Mapped>::const_iterator iter;
+        std::map<Key, mapped_type>::const_iterator iter;
 
     public:
         using iterator_category = std::forward_iterator_tag;
-        using value_type = const Value;
+        using value_type = const value_type;
         using difference_type = std::ptrdiff_t;
-        using pointer = Store::ConstPointer;
-        using reference = const Value&;
+        using pointer = Store::const_pointer;
+        using reference = const value_type&;
 
-        ConstIterator(std::map<Key, Mapped>::const_iterator iter);
+        ConstIterator(std::map<Key, mapped_type>::const_iterator iter);
         ConstIterator& operator++();
         bool operator==(const ConstIterator& other) const;
         bool operator!=(const ConstIterator& other) const;
@@ -107,49 +107,31 @@ public:
 
     // Capacity
     bool empty() const;
-    Size size() const;
-    Size dataSize() const;
-    Size totalSize() const;
+    size_type size() const;      // Number of nodes
+    size_type dataSize() const;  // Size of mapped data
 
     // Modifiers
     void clear() noexcept;
-    std::pair<Iterator, bool> insert(Value&& value);
-    Size erase(const Key& key);
+    std::pair<Iterator, bool> insert(value_type&& value);
+    size_type erase(const Key& key);
 
     // Returns a Store that has all changes from both 'this' and 'other' compared to base.
     // Throws merge_conflict_exception if there are merge conflicts.
-    Store& merge3(const Store& base, const Store& other);
+    Store& merge3(const Store& base, const Store& other) const;
 
     // Iterators
     Iterator begin() noexcept;
     Iterator end() noexcept;
     Iterator find(const Key& key) noexcept;
 
-    ConstIterator cbegin() const noexcept;
-    ConstIterator cend() const noexcept;
-    ConstIterator cfind(const Key& key) const noexcept;
+    ConstIterator begin() const noexcept;
+    ConstIterator end() const noexcept;
+    ConstIterator find(const Key& key) const noexcept;
 
-    // Get all nodes whose prefix matches prefix
-    Store& getPrefix(const Key&& prefix);
-
-    // Get the number of nodes that fall between [key1, key2)
-    Size rangeScan(const Key& key1, const Key& key2);
-
-    /**
-     * @brief Gets the next (guaranteed) unique record id.
-     *
-     * @return int64_t The next unusued record id.
-     */
-    inline int64_t nextRecordId() {
-        return highest_record_id.fetch_add(1);
-    }
-
-    struct keyCmp {
-        bool operator()(const Key& a, const Key& b) const;
-    };
+    // std::distance
+    Store::Iterator::difference_type distance(Iterator iter1, Iterator iter2);
 
 private:
-    std::map<Key, Mapped, keyCmp> map = std::map<Key, Mapped, keyCmp>();
-    std::atomic<std::int64_t> highest_record_id;
+    std::map<Key, mapped_type> map = std::map<Key, mapped_type>();
 };
 }
