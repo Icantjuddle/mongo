@@ -25,26 +25,40 @@
  * delete this exception statement from all source files in the program,
  * then also delete it in the license file.
 = */
-#pragma once 
+#pragma once
 
 #include "mongo/db/storage/biggie/store.h"
+#include <atomic>
 
 namespace mongo {
 class BiggieStore : public Store {
-    std::map<Key, Mapped> map;
-    public:
-        BiggieStore();
+private:
+    std::map<Key, Mapped>* map = new std::map<Key, Mapped>();
+    std::atomic<std::int64_t> highest_record_id;
 
-        bool empty() const;
+public:
+    bool operator==(const Store& other) const;
 
-        Store::Size size() const ;
+    bool empty() const;
+    Store::Size size() const;
 
-        void clear() noexcept;
+    void clear() noexcept;
+    std::pair<Store::Iterator, bool> insert(Value&& value);
+    Store::Size erase(const Key& key);
 
-        bool insert (Value&& value);
+    Store& merge3(const Store& base, const Store& other);
 
-        Store::Size erase (const Key& key);
+    Iterator begin() noexcept;
+    Iterator end() noexcept;
+    Iterator find(const Key& key) noexcept;
 
-        Store& merge3(const Store& base, const Store& other);
+    /**
+     * @brief Gets the next (garunteed) unique record id.
+     *
+     * @return int64_t The next unusued record id.
+     */
+    inline int64_t nextRecordId() {
+        return highest_record_id.fetch_add(1);
+    }
 };
 }
