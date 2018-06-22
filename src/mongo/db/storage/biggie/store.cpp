@@ -32,7 +32,7 @@
 
 namespace mongo {
 
-Store::Iterator::Iterator(std::map<Key, Store::Mapped>::iterator iter) : iter(iter) {}
+Store::Iterator::Iterator(std::map<Key, Store::mapped_type>::iterator iter) : iter(iter) {}
 
 Store::Iterator& Store::Iterator::operator++() {
     ++this->iter;
@@ -55,7 +55,7 @@ Store::Iterator::pointer Store::Iterator::operator->() {
     return &(*this->iter);
 }
 
-Store::ConstIterator::ConstIterator(std::map<Key, Store::Mapped>::const_iterator iter)
+Store::ConstIterator::ConstIterator(std::map<Key, Store::mapped_type>::const_iterator iter)
     : iter(iter) {}
 
 Store::ConstIterator& Store::ConstIterator::operator++() {
@@ -87,29 +87,14 @@ bool Store::empty() const {
     return map.empty();
 }
 
-Store::Size Store::size() const {
+Store::size_type Store::size() const {
     return map.size();
 }
 
-Store::Size Store::dataSize() const {
-    Store::Size s = Store::Size(0);
-    for (auto iter = this->cbegin(); iter != this->cend(); ++iter) {
-        s += iter->second.size();
-    }
-
-    return s;
-}
-
-Store::Size Store::totalSize() const {
-    Store::Size s = Store::Size(0);
-
-    for (auto iter = this->cbegin(); iter != this->cend(); ++iter) {
-        s += iter->second.size();
-        s += iter->first.second;
-        s += sizeof(uint8_t*);
-        s += sizeof(std::pair<const Key, Mapped>);
-        s += sizeof(std::pair<uint8_t*, size_t>);
-        s += sizeof(std::string);
+Store::size_type Store::dataSize() const {
+    Store::size_type s = Store::size_type(0);
+    for (const std::pair<const Key, mapped_type> val : *this) {
+        s += val.second.size();
     }
 
     return s;
@@ -119,58 +104,58 @@ void Store::clear() noexcept {
     map.clear();
 }
 
-std::pair<Store::Iterator, bool> Store::insert(Value&& value) {
+std::pair<Store::Iterator, bool> Store::insert(value_type&& value) {
     auto res = this->map.insert(value);
     Store::Iterator iter = Store::Iterator(res.first);
     return std::pair<Store::Iterator, bool>(iter, res.second);
 }
 
-Store::Size Store::erase(const Key& key) {
+Store::size_type Store::erase(const Key& key) {
     return map.erase(key);
 }
 
-Store& Store::merge3(const Store& base, const Store& other) {
+Store& Store::merge3(const Store& base, const Store& other) const {
     Store* store = new Store();
 
-    for (Store::ConstIterator iter = this->cbegin(); iter != this->cend(); ++iter) {
-        Store::ConstIterator baseIter = base.cfind(iter->first);
-        Store::ConstIterator otherIter = other.cfind(iter->first);
+    for (const std::pair<const Key, mapped_type> val : *this) {
+        Store::ConstIterator baseIter = base.find(val.first);
+        Store::ConstIterator otherIter = other.find(val.first);
 
-        if (baseIter != base.cend() && otherIter != other.cend()) {
+        if (baseIter != base.end() && otherIter != other.end()) {
             // Conflicting modifications
-            if (iter->second != baseIter->second && otherIter->second != baseIter->second) {
+            if (val.second != baseIter->second && otherIter->second != baseIter->second) {
                 throw merge_conflict_exception();
             }
 
             // Non conflicting modifications and no modifications
-            if (iter->second != baseIter->second) {
-                store->insert(std::pair<const Key, Mapped>(*iter));
+            if (val.second != baseIter->second) {
+                store->insert(std::pair<const Key, mapped_type>(val));
             } else {
-                store->insert(std::pair<const Key, Mapped>(*otherIter));
+                store->insert(std::pair<const Key, mapped_type>(*otherIter));
             }
-        } else if (baseIter != base.cend() && otherIter == other.cend()) {
+        } else if (baseIter != base.end() && otherIter == other.end()) {
             // Conflicting modification and deletion
-            if (iter->second != baseIter->second) {
+            if (val.second != baseIter->second) {
                 throw merge_conflict_exception();
             }
-        } else if (baseIter == base.cend()) {
+        } else if (baseIter == base.end()) {
             // Conflicting insertions
-            if (otherIter != other.cend() && iter->second != otherIter->second) {
+            if (otherIter != other.end() && val.second != otherIter->second) {
                 throw merge_conflict_exception();
             }
             // Insertions
-            store->insert(std::pair<const Key, Mapped>(*iter));
+            store->insert(std::pair<const Key, mapped_type>(val));
         }
     }
 
-    for (Store::ConstIterator iter = other.cbegin(); iter != other.cend(); ++iter) {
-        Store::ConstIterator baseIter = base.cfind(iter->first);
-        Store::ConstIterator thisIter = this->cfind(iter->first);
+    for (const std::pair<const Key, mapped_type> val : other) {
+        Store::ConstIterator baseIter = base.find(val.first);
+        Store::ConstIterator thisIter = this->find(val.first);
 
-        if (baseIter == base.cend()) {
+        if (baseIter == base.end()) {
             // Insertion
-            store->insert(std::pair<const Key, Mapped>(*iter));
-        } else if (thisIter == this->cend() && iter->second != baseIter->second) {
+            store->insert(std::pair<const Key, mapped_type>(val));
+        } else if (thisIter == this->end() && val.second != baseIter->second) {
             // Conflicting modification and deletion
             throw merge_conflict_exception();
         }
@@ -191,59 +176,19 @@ Store::Iterator Store::find(const Key& key) noexcept {
     return Store::Iterator(this->map.find(key));
 }
 
-Store::ConstIterator Store::cbegin() const noexcept {
-    return Store::ConstIterator(this->map.cbegin());
+Store::ConstIterator Store::begin() const noexcept {
+    return Store::ConstIterator(this->map.begin());
 }
 
-Store::ConstIterator Store::cend() const noexcept {
-    return Store::ConstIterator(this->map.cend());
+Store::ConstIterator Store::end() const noexcept {
+    return Store::ConstIterator(this->map.end());
 }
 
-Store::ConstIterator Store::cfind(const Key& key) const noexcept {
+Store::ConstIterator Store::find(const Key& key) const noexcept {
     return Store::ConstIterator(this->map.find(key));
 }
 
-Store& Store::getPrefix(const Key&& prefix) {
-    Store* store = new Store();
-
-    for (auto iter = this->cbegin(); iter != this->cend(); ++iter) {
-        if (iter->first.second >= prefix.second) {
-            if (memcmp(iter->first.first, prefix.first, prefix.second) == 0) {
-                store->insert(std::pair<const Key, Mapped>(*iter));
-            }
-        }
-    }
-    return *store;
-}
-
-Store::Size Store::rangeScan(const Key& key1, const Key& key2) {
-    Store::Size s = Store::Size(0);
-    keyCmp cmp;
-    for (auto iter = this->cbegin(); iter != this->cend(); ++iter) {
-        if (!cmp.operator()(iter->first, key1) && cmp.operator()(iter->first, key2)) {
-            s++;
-        }
-    }
-    return s;
-}
-
-bool Store::keyCmp::operator()(const Key& a, const Key& b) const {
-    if (a.second == b.second) {
-        return memcmp(a.first, b.first, a.second) < 0;
-    }
-
-    int shorter;
-    if (a.second < b.second) {
-        shorter = a.second;
-    } else {
-        shorter = b.second;
-    }
-
-    int res = memcmp(a.first, b.first, a.second);
-    if (res == 0) {
-        return a.second < b.second;
-    } else {
-        return res < 0;
-    }
+Store::Iterator::difference_type Store::distance(Store::Iterator iter1, Store::Iterator iter2) {
+    return std::distance(iter1.iter, iter2.iter);
 }
 }  // namespace mongo
