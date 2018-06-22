@@ -7,7 +7,6 @@ env.SConscript(
     dirs=[
         'biggie',
         'devnull',
-        'biggie',
         'ephemeral_for_test',
         'kv',
         'mobile',
