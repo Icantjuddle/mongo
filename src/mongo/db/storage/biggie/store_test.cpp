@@ -33,342 +33,410 @@
 #include "mongo/unittest/unittest.h"
 
 namespace mongo {
+namespace biggie {
 
 class StoreTest : public unittest::Test {};
 
+TEST_F(StoreTest, InsertTest) {
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string> store;
+    std::pair<Store<std::string, std::string>::iterator, bool> res =
+        store.insert(Store<std::string, std::string>::value_type(value1));
+    ASSERT_TRUE(res.second);
+    ASSERT_TRUE(*res.first == value1);
+}
+
 TEST_F(StoreTest, EmptyTest) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store store;
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string> store;
     ASSERT_TRUE(store.empty());
 
-    store.insert(std::pair<const Key, Store::mapped_type>(value1));
+    store.insert(Store<std::string, std::string>::value_type(value1));
     ASSERT_FALSE(store.empty());
 }
 
 TEST_F(StoreTest, SizeTest) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store store;
-    ASSERT_EQ(store.size(), Store::size_type(0));
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string> store;
+    auto expected1 = Store<std::string, std::string>::size_type(0);
+    ASSERT_EQ(store.size(), expected1);
 
-    store.insert(std::pair<const Key, Store::mapped_type>(value1));
-    ASSERT_EQ(store.size(), Store::size_type(1));
+    store.insert(Store<std::string, std::string>::value_type(value1));
+    auto expected2 = Store<std::string, std::string>::size_type(1);
+    ASSERT_EQ(store.size(), expected2);
 }
 
 TEST_F(StoreTest, ClearTest) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store store;
-    store.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string> store;
+    store.insert(Store<std::string, std::string>::value_type(value1));
     ASSERT_FALSE(store.empty());
 
     store.clear();
     ASSERT_TRUE(store.empty());
 }
 
-TEST_F(StoreTest, InsertTest) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store store;
-    std::pair<Store::Iterator, bool> res =
-        store.insert(std::pair<const Key, Store::mapped_type>(value1));
-    ASSERT_TRUE(res.second);
-    ASSERT_TRUE(*res.first == value1);
-}
-
 TEST_F(StoreTest, EraseTest) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "bar");
-    Store store;
-    store.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store.insert(std::pair<const Key, Store::mapped_type>(value2));
-    ASSERT_EQ(store.size(), Store::size_type(2));
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "bar");
+    Store<std::string, std::string> store;
+    store.insert(Store<std::string, std::string>::value_type(value1));
+    store.insert(Store<std::string, std::string>::value_type(value2));
+    auto expected1 = Store<std::string, std::string>::size_type(2);
+    ASSERT_EQ(store.size(), expected1);
 
     store.erase(value1.first);
-    ASSERT_EQ(store.size(), Store::size_type(1));
+    auto expected2 = Store<std::string, std::string>::size_type(1);
+    ASSERT_EQ(store.size(), expected2);
+
+    store.erase("3");
+    ASSERT_EQ(store.size(), expected2);
 }
 
 TEST_F(StoreTest, FindTest) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "bar");
-    Store store;
-    store.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store.insert(std::pair<const Key, Store::mapped_type>(value2));
-    ASSERT_EQ(store.size(), Store::size_type(2));
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "bar");
+    Store<std::string, std::string> store;
+    store.insert(Store<std::string, std::string>::value_type(value1));
+    store.insert(Store<std::string, std::string>::value_type(value2));
+    auto expected = Store<std::string, std::string>::size_type(2);
+    ASSERT_EQ(store.size(), expected);
 
-    Store::Iterator iter = store.find(value1.first);
-    ASSERT_TRUE(*iter == value1);
+    Store<std::string, std::string>::iterator iter1 = store.find(value1.first);
+    ASSERT_TRUE(*iter1 == value1);
+
+    Store<std::string, std::string>::iterator iter2 = store.find("3");
+    ASSERT_TRUE(iter2 == store.end());
 }
 
 TEST_F(StoreTest, DataSizeTest) {
     std::string str1 = "foo";
     std::string str2 = "bar65";
 
-    Store::value_type value1 = std::make_pair("1", str1);
-    Store::value_type value2 = std::make_pair("2", str2);
-    Store store;
-    store.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", str1);
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", str2);
+    Store<std::string, std::string> store;
+    store.insert(Store<std::string, std::string>::value_type(value1));
+    store.insert(Store<std::string, std::string>::value_type(value2));
     ASSERT_EQ(store.dataSize(), str1.size() + str2.size());
 }
 
 TEST_F(StoreTest, DistanceTest) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "bar");
-    Store::value_type value3 = std::make_pair("3", "foo");
-    Store::value_type value4 = std::make_pair("4", "bar");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "bar");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("3", "foo");
+    Store<std::string, std::string>::value_type value4 = std::make_pair("4", "bar");
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
-    base.insert(std::pair<const Key, Store::mapped_type>(value2));
-    base.insert(std::pair<const Key, Store::mapped_type>(value3));
-    base.insert(std::pair<const Key, Store::mapped_type>(value4));
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value2));
+    base.insert(Store<std::string, std::string>::value_type(value3));
+    base.insert(Store<std::string, std::string>::value_type(value4));
 
-    Store::Iterator begin = base.begin();
-    Store::Iterator second = base.begin();
+    Store<std::string, std::string>::iterator begin = base.begin();
+    Store<std::string, std::string>::iterator second = base.begin();
     ++second;
-    Store::Iterator end = base.end();
+    Store<std::string, std::string>::iterator end = base.end();
 
     ASSERT_EQ(base.distance(begin, end), 4);
     ASSERT_EQ(base.distance(second, end), 3);
 }
 
 TEST_F(StoreTest, MergeNoModifications) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "bar");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "bar");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store<std::string, std::string> store1;
+    store1.insert(Store<std::string, std::string>::value_type(value1));
+    store1.insert(Store<std::string, std::string>::value_type(value2));
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store<std::string, std::string> store2;
+    store2.insert(Store<std::string, std::string>::value_type(value1));
+    store2.insert(Store<std::string, std::string>::value_type(value2));
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
-    base.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value2));
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store<std::string, std::string> merged = store1.merge3(base, store2);
 
     ASSERT_TRUE(merged == store1);
 }
 
 TEST_F(StoreTest, MergeModifications) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "bar");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("1", "bar");
 
-    Store::value_type value3 = std::make_pair("3", "baz");
-    Store::value_type value4 = std::make_pair("4", "faz");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("3", "baz");
+    Store<std::string, std::string>::value_type value4 = std::make_pair("3", "faz");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value2));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value3));
+    Store<std::string, std::string> store1;
+    store1.insert(Store<std::string, std::string>::value_type(value2));
+    store1.insert(Store<std::string, std::string>::value_type(value3));
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value4));
+    Store<std::string, std::string> store2;
+    store2.insert(Store<std::string, std::string>::value_type(value1));
+    store2.insert(Store<std::string, std::string>::value_type(value4));
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
-    base.insert(std::pair<const Key, Store::mapped_type>(value3));
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value3));
 
-    Store expected;
-    expected.insert(std::pair<const Key, Store::mapped_type>(value2));
-    expected.insert(std::pair<const Key, Store::mapped_type>(value4));
+    Store<std::string, std::string> expected;
+    expected.insert(Store<std::string, std::string>::value_type(value2));
+    expected.insert(Store<std::string, std::string>::value_type(value4));
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store<std::string, std::string> merged = store1.merge3(base, store2);
 
     ASSERT_TRUE(merged == expected);
 }
 
 TEST_F(StoreTest, MergeDeletions) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "moo");
-    Store::value_type value3 = std::make_pair("3", "bar");
-    Store::value_type value4 = std::make_pair("4", "baz");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "moo");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("3", "bar");
+    Store<std::string, std::string>::value_type value4 = std::make_pair("4", "baz");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value3));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value4));
+    Store<std::string, std::string> store1;
+    store1.insert(Store<std::string, std::string>::value_type(value1));
+    store1.insert(Store<std::string, std::string>::value_type(value3));
+    store1.insert(Store<std::string, std::string>::value_type(value4));
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value2));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value3));
+    Store<std::string, std::string> store2;
+    store2.insert(Store<std::string, std::string>::value_type(value1));
+    store2.insert(Store<std::string, std::string>::value_type(value2));
+    store2.insert(Store<std::string, std::string>::value_type(value3));
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
-    base.insert(std::pair<const Key, Store::mapped_type>(value2));
-    base.insert(std::pair<const Key, Store::mapped_type>(value3));
-    base.insert(std::pair<const Key, Store::mapped_type>(value4));
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value2));
+    base.insert(Store<std::string, std::string>::value_type(value3));
+    base.insert(Store<std::string, std::string>::value_type(value4));
 
-    Store expected;
-    expected.insert(std::pair<const Key, Store::mapped_type>(value1));
-    expected.insert(std::pair<const Key, Store::mapped_type>(value3));
+    Store<std::string, std::string> expected;
+    expected.insert(Store<std::string, std::string>::value_type(value1));
+    expected.insert(Store<std::string, std::string>::value_type(value3));
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store<std::string, std::string> merged = store1.merge3(base, store2);
 
     ASSERT_TRUE(merged == expected);
 }
 
 TEST_F(StoreTest, MergeInsertions) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "foo");
-    Store::value_type value3 = std::make_pair("3", "bar");
-    Store::value_type value4 = std::make_pair("4", "faz");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "foo");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("3", "bar");
+    Store<std::string, std::string>::value_type value4 = std::make_pair("4", "faz");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value2));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value4));
+    Store<std::string, std::string> store1;
+    store1.insert(Store<std::string, std::string>::value_type(value1));
+    store1.insert(Store<std::string, std::string>::value_type(value2));
+    store1.insert(Store<std::string, std::string>::value_type(value4));
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value2));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value3));
+    Store<std::string, std::string> store2;
+    store2.insert(Store<std::string, std::string>::value_type(value1));
+    store2.insert(Store<std::string, std::string>::value_type(value2));
+    store2.insert(Store<std::string, std::string>::value_type(value3));
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
-    base.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value2));
 
-    Store expected;
-    expected.insert(std::pair<const Key, Store::mapped_type>(value1));
-    expected.insert(std::pair<const Key, Store::mapped_type>(value2));
-    expected.insert(std::pair<const Key, Store::mapped_type>(value3));
-    expected.insert(std::pair<const Key, Store::mapped_type>(value4));
+    Store<std::string, std::string> expected;
+    expected.insert(Store<std::string, std::string>::value_type(value1));
+    expected.insert(Store<std::string, std::string>::value_type(value2));
+    expected.insert(Store<std::string, std::string>::value_type(value3));
+    expected.insert(Store<std::string, std::string>::value_type(value4));
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store<std::string, std::string> merged = store1.merge3(base, store2);
 
     ASSERT_TRUE(merged == expected);
 }
 
 TEST_F(StoreTest, MergeEmptyInsertionOther) {
-    Store::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
 
-    Store store1;
+    Store<std::string, std::string> thisStore;
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store<std::string, std::string> otherStore;
+    otherStore.insert(Store<std::string, std::string>::value_type(value1));
 
-    Store base;
+    Store<std::string, std::string> baseStore;
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store<std::string, std::string> merged = thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == store2);
+    ASSERT_TRUE(merged == otherStore);
 }
 
 TEST_F(StoreTest, MergeEmptyInsertionThis) {
-    Store::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store<std::string, std::string> thisStore;
+    thisStore.insert(Store<std::string, std::string>::value_type(value1));
 
-    Store store2;
+    Store<std::string, std::string> otherStore;
 
-    Store base;
+    Store<std::string, std::string> baseStore;
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store<std::string, std::string> merged = thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == store1);
+    ASSERT_TRUE(merged == thisStore);
 }
 
 TEST_F(StoreTest, MergeInsertionDeletionModification) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "baz");
-    Store::value_type value3 = std::make_pair("3", "bar");
-    Store::value_type value4 = std::make_pair("4", "faz");
-    Store::value_type value5 = std::make_pair("5", "too");
-    Store::value_type value6 = std::make_pair("6", "moo");
-    Store::value_type value7 = std::make_pair("1", "modified");
-    Store::value_type value8 = std::make_pair("2", "modified2");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "baz");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("3", "bar");
+    Store<std::string, std::string>::value_type value4 = std::make_pair("4", "faz");
+    Store<std::string, std::string>::value_type value5 = std::make_pair("5", "too");
+    Store<std::string, std::string>::value_type value6 = std::make_pair("6", "moo");
+    Store<std::string, std::string>::value_type value7 = std::make_pair("1", "modified");
+    Store<std::string, std::string>::value_type value8 = std::make_pair("2", "modified2");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value7));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value2));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value3));
-    store1.insert(std::pair<const Key, Store::mapped_type>(value5));
+    Store<std::string, std::string> store1;
+    store1.insert(Store<std::string, std::string>::value_type(value7));
+    store1.insert(Store<std::string, std::string>::value_type(value2));
+    store1.insert(Store<std::string, std::string>::value_type(value3));
+    store1.insert(Store<std::string, std::string>::value_type(value5));
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value1));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value8));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value4));
-    store2.insert(std::pair<const Key, Store::mapped_type>(value6));
+    Store<std::string, std::string> store2;
+    store2.insert(Store<std::string, std::string>::value_type(value1));
+    store2.insert(Store<std::string, std::string>::value_type(value8));
+    store2.insert(Store<std::string, std::string>::value_type(value4));
+    store2.insert(Store<std::string, std::string>::value_type(value6));
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
-    base.insert(std::pair<const Key, Store::mapped_type>(value2));
-    base.insert(std::pair<const Key, Store::mapped_type>(value3));
-    base.insert(std::pair<const Key, Store::mapped_type>(value4));
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value2));
+    base.insert(Store<std::string, std::string>::value_type(value3));
+    base.insert(Store<std::string, std::string>::value_type(value4));
 
-    Store expected;
-    expected.insert(std::pair<const Key, Store::mapped_type>(value7));
-    expected.insert(std::pair<const Key, Store::mapped_type>(value8));
-    expected.insert(std::pair<const Key, Store::mapped_type>(value5));
-    expected.insert(std::pair<const Key, Store::mapped_type>(value6));
+    Store<std::string, std::string> expected;
+    expected.insert(Store<std::string, std::string>::value_type(value7));
+    expected.insert(Store<std::string, std::string>::value_type(value8));
+    expected.insert(Store<std::string, std::string>::value_type(value5));
+    expected.insert(Store<std::string, std::string>::value_type(value6));
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store<std::string, std::string> merged = store1.merge3(base, store2);
 
     ASSERT_TRUE(merged == expected);
 }
 
 TEST_F(StoreTest, MergeConflictingModifications) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("1", "bar");
-    Store::value_type value3 = std::make_pair("1", "baz");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("1", "bar");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("1", "baz");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store<std::string, std::string> store1;
+    store1.insert(Store<std::string, std::string>::value_type(value2));
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value3));
+    Store<std::string, std::string> store2;
+    store2.insert(Store<std::string, std::string>::value_type(value3));
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
-
-    ASSERT_THROWS(store1.merge3(base, store2), merge_conflict_exception);
-}
-
-TEST_F(StoreTest, MergeConflictingModifictionThisAndDeletionOther) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("1", "bar");
-
-    Store store1;
-
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value2));
-
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
 
     ASSERT_THROWS(store1.merge3(base, store2), merge_conflict_exception);
 }
 
 TEST_F(StoreTest, MergeConflictingModifictionOtherAndDeletionThis) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("1", "bar");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("1", "bar");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store<std::string, std::string> thisStore;
 
-    Store store2;
+    Store<std::string, std::string> otherStore;
+    otherStore.insert(Store<std::string, std::string>::value_type(value2));
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store<std::string, std::string> baseStore;
+    baseStore.insert(Store<std::string, std::string>::value_type(value1));
 
-    ASSERT_THROWS(store1.merge3(base, store2), merge_conflict_exception);
+    ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
+}
+
+TEST_F(StoreTest, MergeConflictingModifictionThisAndDeletionOther) {
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("1", "bar");
+
+    Store<std::string, std::string> thisStore;
+    thisStore.insert(Store<std::string, std::string>::value_type(value2));
+
+    Store<std::string, std::string> otherStore;
+
+    Store<std::string, std::string> baseStore;
+    baseStore.insert(Store<std::string, std::string>::value_type(value1));
+
+    ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
 }
 
 TEST_F(StoreTest, MergeConflictingInsertions) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("1", "bar");
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("1", "bar");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store<std::string, std::string> store1;
+    store1.insert(Store<std::string, std::string>::value_type(value2));
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store<std::string, std::string> store2;
+    store2.insert(Store<std::string, std::string>::value_type(value1));
 
-    Store base;
+    Store<std::string, std::string> base;
 
     ASSERT_THROWS(store1.merge3(base, store2), merge_conflict_exception);
 }
-}  // namespace
+
+TEST_F(StoreTest, UpperBoundTest) {
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "bar");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("3", "foo");
+    Store<std::string, std::string>::value_type value4 = std::make_pair("5", "bar");
+
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value2));
+    base.insert(Store<std::string, std::string>::value_type(value3));
+    base.insert(Store<std::string, std::string>::value_type(value4));
+
+    Store<std::string, std::string>::iterator iter1 = base.upper_bound(value2.first);
+    ASSERT_EQ(iter1->first, "3");
+    Store<std::string, std::string>::iterator iter2 = base.upper_bound(value4.first);
+    ASSERT_TRUE(iter2 == base.end());
+}
+
+TEST_F(StoreTest, LowerBoundTest) {
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "bar");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("3", "foo");
+    Store<std::string, std::string>::value_type value4 = std::make_pair("5", "bar");
+
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value2));
+    base.insert(Store<std::string, std::string>::value_type(value3));
+    base.insert(Store<std::string, std::string>::value_type(value4));
+
+    Store<std::string, std::string>::iterator iter1 = base.lower_bound(value2.first);
+    ASSERT_EQ(iter1->first, "2");
+    Store<std::string, std::string>::iterator iter2 = base.lower_bound("7");
+    ASSERT_TRUE(iter2 == base.end());
+}
+
+TEST_F(StoreTest, ReverseIteratorTest) {
+    Store<std::string, std::string>::value_type value1 = std::make_pair("1", "foo");
+    Store<std::string, std::string>::value_type value2 = std::make_pair("2", "bar");
+    Store<std::string, std::string>::value_type value3 = std::make_pair("3", "foo");
+    Store<std::string, std::string>::value_type value4 = std::make_pair("4", "bar");
+
+    Store<std::string, std::string> base;
+    base.insert(Store<std::string, std::string>::value_type(value4));
+    base.insert(Store<std::string, std::string>::value_type(value1));
+    base.insert(Store<std::string, std::string>::value_type(value3));
+    base.insert(Store<std::string, std::string>::value_type(value2));
+
+    int cur = 4;
+    for (auto iter = base.rbegin(); iter != base.rend(); ++iter) {
+        ASSERT_EQ(iter->first, std::to_string(cur));
+        --cur;
+    }
+}
+}  // namespace biggie
+}  // namespace mongo

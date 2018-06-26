@@ -28,15 +28,11 @@
 
 #pragma once
 
-#include <atomic>
-#include <cstring>
 #include <exception>
 #include <map>
-#include <memory>
-#include <string>
-#include <utility>
 
 namespace mongo {
+namespace biggie {
 
 class merge_conflict_exception : std::exception {
     virtual const char* what() const noexcept {
@@ -44,57 +40,71 @@ class merge_conflict_exception : std::exception {
     }
 };
 
-using T = std::string;
-using Key = std::string;
-
+template <class Key, class T>
 class Store {
+private:
+    std::map<Key, T> map;
+
 public:
     using mapped_type = T;
     using value_type = std::pair<const Key, mapped_type>;
     using allocator_type = std::allocator<value_type>;
-    using pointer = std::allocator_traits<allocator_type>::pointer;
-    using const_pointer = std::allocator_traits<allocator_type>::const_pointer;
+    using pointer = typename std::allocator_traits<allocator_type>::pointer;
+    using const_pointer = typename std::allocator_traits<allocator_type>::const_pointer;
     using size_type = std::size_t;
 
-    class Iterator {
+    template <class pointer_type, class reference_type, class iter_type>
+    class store_iterator {
     private:
         friend class Store;
-        std::map<Key, mapped_type>::iterator iter;
+        iter_type iter;
+        store_iterator(iter_type iter) : iter(iter) {}
 
     public:
-        using iterator_category = std::forward_iterator_tag;
-        using value_type = value_type;
+        using iterator_category = std::bidirectional_iterator_tag;
+        using value_type = Store::value_type;
         using difference_type = std::ptrdiff_t;
-        using pointer = Store::pointer;
-        using reference = value_type&;
+        using pointer = pointer_type;
+        using reference = reference_type;
 
-        Iterator(std::map<Key, mapped_type>::iterator iter);
-        Iterator& operator++();
-        bool operator==(const Iterator& other) const;
-        bool operator!=(const Iterator& other) const;
-        reference operator*() const;
-        pointer operator->();
+        store_iterator& operator++() {
+            ++this->iter;
+            return *this;
+        }
+        store_iterator operator++(int) {
+            store_iterator old = *this;
+            ++this->iter;
+            return old;
+        }
+        store_iterator& operator--() {
+            --this->iter;
+            return *this;
+        }
+        store_iterator operator--(int) {
+            store_iterator old = *this;
+            --this->iter;
+            return old;
+        }
+        // Non member equality
+        friend bool operator==(const store_iterator& lhs, const store_iterator& rhs) {
+            return lhs.iter == rhs.iter;
+        }
+        friend bool operator!=(const store_iterator& lhs, const store_iterator& rhs) {
+            return !(lhs.iter == rhs.iter);
+        }
+        reference operator*() const {
+            return *this->iter;
+        }
+        pointer operator->() const {
+            return &(*this->iter);
+        }
     };
 
-    class ConstIterator {
-    private:
-        friend class Store;
-        std::map<Key, mapped_type>::const_iterator iter;
-
-    public:
-        using iterator_category = std::forward_iterator_tag;
-        using value_type = const value_type;
-        using difference_type = std::ptrdiff_t;
-        using pointer = Store::const_pointer;
-        using reference = const value_type&;
-
-        ConstIterator(std::map<Key, mapped_type>::const_iterator iter);
-        ConstIterator& operator++();
-        bool operator==(const ConstIterator& other) const;
-        bool operator!=(const ConstIterator& other) const;
-        reference operator*() const;
-        pointer operator->();
-    };
+    using iterator = store_iterator<pointer, value_type&, typename std::map<Key, T>::iterator>;
+    using const_iterator =
+        store_iterator<const_pointer, const value_type&, typename std::map<Key, T>::const_iterator>;
+    using reverse_iterator = std::reverse_iterator<iterator>;
+    using reverse_const_iterator = std::reverse_iterator<const_iterator>;
 
     // Constructors
     Store(const Store& other) = default;
@@ -102,36 +112,154 @@ public:
 
     ~Store() = default;
 
-    // Equality
-    bool operator==(const Store& other) const;
+    // Non member equality
+    friend bool operator==(const Store& lhs, const Store& rhs) {
+        return lhs.map == rhs.map;
+    }
 
     // Capacity
-    bool empty() const;
-    size_type size() const;      // Number of nodes
-    size_type dataSize() const;  // Size of mapped data
+    bool empty() const {
+        return map.empty();
+    }
+    // Number of nodes
+    size_type size() const {
+        return map.size();
+    }
+    // Size of
+    size_type dataSize() const {
+        size_type s = size_type(0);
+        for (const value_type val : *this) {
+            s += val.second.size();
+        }
+
+        return s;
+    }
 
     // Modifiers
-    void clear() noexcept;
-    std::pair<Iterator, bool> insert(value_type&& value);
-    size_type erase(const Key& key);
+    void clear() noexcept {
+        map.clear();
+    }
+    std::pair<iterator, bool> insert(value_type&& value) {
+        auto res = this->map.insert(value);
+        iterator iter = iterator(res.first);
+        return std::pair<iterator, bool>(iter, res.second);
+    }
+    size_type erase(const Key& key) {
+        return map.erase(key);
+    }
 
     // Returns a Store that has all changes from both 'this' and 'other' compared to base.
     // Throws merge_conflict_exception if there are merge conflicts.
-    Store& merge3(const Store& base, const Store& other) const;
+    Store merge3(const Store& base, const Store& other) const {
+        Store store;
+
+        // Merge in all differences between this and base, along with modifications in other
+        for (const Store::value_type val : *this) {
+            Store::const_iterator baseIter = base.find(val.first);
+            Store::const_iterator otherIter = other.find(val.first);
+
+            if (baseIter != base.end() && otherIter != other.end()) {
+                // Conflicting modifications
+                if (val.second != baseIter->second && otherIter->second != baseIter->second) {
+                    throw merge_conflict_exception();
+                }
+
+                if (val.second != baseIter->second) {
+                    // Non conflicting modification in this
+                    store.insert(Store::value_type(val));
+                } else {
+                    // Non conflicting modification in other or no modification
+                    store.insert(Store::value_type(*otherIter));
+                }
+            } else if (baseIter != base.end() && otherIter == other.end()) {
+                // Conflicting modification and deletion
+                if (val.second != baseIter->second) {
+                    throw merge_conflict_exception();
+                }
+            } else if (baseIter == base.end()) {
+                // Conflicting insertions
+                if (otherIter != other.end() && val.second != otherIter->second) {
+                    throw merge_conflict_exception();
+                }
+
+                // Insertions
+                store.insert(Store::value_type(val));
+            }
+        }
+
+        // Merge in insertions and deletions from other
+        for (const Store::value_type otherVal : other) {
+            Store::const_iterator baseIter = base.find(otherVal.first);
+            Store::const_iterator thisIter = this->find(otherVal.first);
+
+            if (baseIter == base.end()) {
+                // Insertion
+                store.insert(Store::value_type(otherVal));
+            } else if (thisIter == this->end() && otherVal.second != baseIter->second) {
+                // Conflicting modification and deletion
+                throw merge_conflict_exception();
+            }
+        }
+
+        return store;
+    }
 
     // Iterators
-    Iterator begin() noexcept;
-    Iterator end() noexcept;
-    Iterator find(const Key& key) noexcept;
+    iterator begin() noexcept {
+        return iterator(this->map.begin());
+    }
+    iterator end() noexcept {
+        return iterator(this->map.end());
+    }
 
-    ConstIterator begin() const noexcept;
-    ConstIterator end() const noexcept;
-    ConstIterator find(const Key& key) const noexcept;
+    reverse_iterator rbegin() noexcept {
+        return reverse_iterator(end());
+    }
+    reverse_iterator rend() noexcept {
+        return reverse_iterator(begin());
+    }
+
+    const_iterator begin() const noexcept {
+        return const_iterator(this->map.begin());
+    }
+    const_iterator end() const noexcept {
+        return const_iterator(this->map.end());
+    }
+
+    reverse_const_iterator rbegin() const noexcept {
+        return reverse_const_iterator(end());
+    }
+    reverse_const_iterator rend() const noexcept {
+        return reverse_const_iterator(begin());
+    }
+
+    // Look up
+    iterator find(const Key& key) {
+        return iterator(this->map.find(key));
+    }
+    const_iterator find(const Key& key) const {
+        return const_iterator(this->map.find(key));
+    }
+    iterator lower_bound(const Key& key) {
+        return iterator(this->map.lower_bound(key));
+    }
+    const_iterator lower_bound(const Key& key) const {
+        return const_iterator(this->map.lower_bound(key));
+    }
+    iterator upper_bound(const Key& key) {
+        return iterator(this->map.upper_bound(key));
+    }
+    const_iterator upper_bound(const Key& key) const {
+        return const_iterator(this->map.upper_bound(key));
+    }
 
     // std::distance
-    Store::Iterator::difference_type distance(Iterator iter1, Iterator iter2);
-
-private:
-    std::map<Key, mapped_type> map = std::map<Key, mapped_type>();
+    typename iterator::difference_type distance(iterator iter1, iterator iter2) {
+        return typename iterator::difference_type(std::distance(iter1.iter, iter2.iter));
+    };
+    typename iterator::difference_type distance(const_iterator iter1, const_iterator iter2) const {
+        return typename iterator::difference_type(std::distance(iter1.iter, iter2.iter));
+    };
 };
+}
 }

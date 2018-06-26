@@ -5,13 +5,13 @@ env = env.Clone()
 
 env.SConscript(
     dirs=[
-        'devnull',
         'biggie',
+        'devnull',
         'ephemeral_for_test',
         'kv',
         'mmap_v1',
-        'wiredtiger',
         'mobile',
+        'wiredtiger',
     ],
     exports=[
         'env'

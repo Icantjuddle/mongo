@@ -5,9 +5,8 @@ Import("env")
 env = env.Clone()
 
 env.Library(
-    target= 'storage_biggie_core',
+    target= 'storage_biggie',
     source= [
-        'store.cpp',
     ],
 )
 
@@ -15,8 +14,5 @@ env.CppUnitTest(
     target='store_test',
     source=[
         'store_test.cpp',
-    ],
-    LIBDEPS=[
-        'storage_biggie_core',
     ],
 )
