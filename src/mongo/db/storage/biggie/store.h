@@ -122,11 +122,17 @@ public:
     // Iterators
     Iterator begin() noexcept;
     Iterator end() noexcept;
-    Iterator find(const Key& key) noexcept;
 
     ConstIterator begin() const noexcept;
     ConstIterator end() const noexcept;
+
+    // Look up
+    Iterator find(const Key& key) noexcept;
     ConstIterator find(const Key& key) const noexcept;
+    Iterator lower_bound(const Key& key);
+    ConstIterator lower_bound(const Key& key) const;
+    Iterator upper_bound(const Key& key);
+    ConstIterator upper_bound(const Key& key) const;
 
     // std::distance
     Store::Iterator::difference_type distance(Iterator iter1, Iterator iter2);

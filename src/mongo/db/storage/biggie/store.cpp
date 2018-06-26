@@ -117,6 +117,7 @@ Store::size_type Store::erase(const Key& key) {
 Store& Store::merge3(const Store& base, const Store& other) const {
     Store* store = new Store();
 
+    // Merge in all differences between this and base, along with modifications in other
     for (const std::pair<const Key, mapped_type> val : *this) {
         Store::ConstIterator baseIter = base.find(val.first);
         Store::ConstIterator otherIter = other.find(val.first);
@@ -126,11 +127,12 @@ Store& Store::merge3(const Store& base, const Store& other) const {
             if (val.second != baseIter->second && otherIter->second != baseIter->second) {
                 throw merge_conflict_exception();
             }
-
-            // Non conflicting modifications and no modifications
+            
             if (val.second != baseIter->second) {
+                // Non conflicting modification in this
                 store->insert(std::pair<const Key, mapped_type>(val));
             } else {
+                // Non conflicting modification in other or no modification
                 store->insert(std::pair<const Key, mapped_type>(*otherIter));
             }
         } else if (baseIter != base.end() && otherIter == other.end()) {
@@ -148,14 +150,15 @@ Store& Store::merge3(const Store& base, const Store& other) const {
         }
     }
 
-    for (const std::pair<const Key, mapped_type> val : other) {
-        Store::ConstIterator baseIter = base.find(val.first);
-        Store::ConstIterator thisIter = this->find(val.first);
+    // Merge in insertions and deletions from other
+    for (const std::pair<const Key, mapped_type> otherVal : other) {
+        Store::ConstIterator baseIter = base.find(otherVal.first);
+        Store::ConstIterator thisIter = this->find(otherVal.first);
 
         if (baseIter == base.end()) {
             // Insertion
-            store->insert(std::pair<const Key, mapped_type>(val));
-        } else if (thisIter == this->end() && val.second != baseIter->second) {
+            store->insert(std::pair<const Key, mapped_type>(otherVal));
+        } else if (thisIter == this->end() && otherVal.second != baseIter->second) {
             // Conflicting modification and deletion
             throw merge_conflict_exception();
         }
@@ -186,6 +189,22 @@ Store::ConstIterator Store::end() const noexcept {
 
 Store::ConstIterator Store::find(const Key& key) const noexcept {
     return Store::ConstIterator(this->map.find(key));
+}
+
+Store::Iterator Store::lower_bound(const Key& key) {
+    return Store::Iterator(this->map.lower_bound(key));
+}
+
+Store::ConstIterator Store::lower_bound(const Key& key) const {
+    return Store::ConstIterator(this->map.lower_bound(key));
+}
+
+Store::Iterator Store::upper_bound(const Key& key) {
+    return Store::Iterator(this->map.upper_bound(key));
+}
+
+Store::ConstIterator Store::upper_bound(const Key& key) const {
+    return Store::ConstIterator(this->map.upper_bound(key));
 }
 
 Store::Iterator::difference_type Store::distance(Store::Iterator iter1, Store::Iterator iter2) {

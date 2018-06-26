@@ -36,6 +36,15 @@ namespace mongo {
 
 class StoreTest : public unittest::Test {};
 
+TEST_F(StoreTest, InsertTest) {
+    Store::value_type value1 = std::make_pair("1", "foo");
+    Store store;
+    std::pair<Store::Iterator, bool> res =
+        store.insert(std::pair<const Key, Store::mapped_type>(value1));
+    ASSERT_TRUE(res.second);
+    ASSERT_TRUE(*res.first == value1);
+}
+
 TEST_F(StoreTest, EmptyTest) {
     Store::value_type value1 = std::make_pair("1", "foo");
     Store store;
@@ -62,15 +71,6 @@ TEST_F(StoreTest, ClearTest) {
 
     store.clear();
     ASSERT_TRUE(store.empty());
-}
-
-TEST_F(StoreTest, InsertTest) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store store;
-    std::pair<Store::Iterator, bool> res =
-        store.insert(std::pair<const Key, Store::mapped_type>(value1));
-    ASSERT_TRUE(res.second);
-    ASSERT_TRUE(*res.first == value1);
 }
 
 TEST_F(StoreTest, EraseTest) {
@@ -153,10 +153,10 @@ TEST_F(StoreTest, MergeNoModifications) {
 
 TEST_F(StoreTest, MergeModifications) {
     Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("2", "bar");
+    Store::value_type value2 = std::make_pair("1", "bar");
 
     Store::value_type value3 = std::make_pair("3", "baz");
-    Store::value_type value4 = std::make_pair("4", "faz");
+    Store::value_type value4 = std::make_pair("3", "faz");
 
     Store store1;
     store1.insert(std::pair<const Key, Store::mapped_type>(value2));
@@ -244,31 +244,31 @@ TEST_F(StoreTest, MergeInsertions) {
 TEST_F(StoreTest, MergeEmptyInsertionOther) {
     Store::value_type value1 = std::make_pair("1", "foo");
 
-    Store store1;
+    Store thisStore;
 
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store otherStore;
+    otherStore.insert(std::pair<const Key, Store::mapped_type>(value1));
 
-    Store base;
+    Store baseStore;
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store::Store& merged = thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == store2);
+    ASSERT_TRUE(merged == otherStore);
 }
 
 TEST_F(StoreTest, MergeEmptyInsertionThis) {
     Store::value_type value1 = std::make_pair("1", "foo");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store thisStore;
+    thisStore.insert(std::pair<const Key, Store::mapped_type>(value1));
 
-    Store store2;
+    Store otherStore;
 
-    Store base;
+    Store baseStore;
 
-    Store::Store& merged = store1.merge3(base, store2);
+    Store::Store& merged = thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == store1);
+    ASSERT_TRUE(merged == thisStore);
 }
 
 TEST_F(StoreTest, MergeInsertionDeletionModification) {
@@ -327,34 +327,34 @@ TEST_F(StoreTest, MergeConflictingModifications) {
     ASSERT_THROWS(store1.merge3(base, store2), merge_conflict_exception);
 }
 
-TEST_F(StoreTest, MergeConflictingModifictionThisAndDeletionOther) {
-    Store::value_type value1 = std::make_pair("1", "foo");
-    Store::value_type value2 = std::make_pair("1", "bar");
-
-    Store store1;
-
-    Store store2;
-    store2.insert(std::pair<const Key, Store::mapped_type>(value2));
-
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
-
-    ASSERT_THROWS(store1.merge3(base, store2), merge_conflict_exception);
-}
-
 TEST_F(StoreTest, MergeConflictingModifictionOtherAndDeletionThis) {
     Store::value_type value1 = std::make_pair("1", "foo");
     Store::value_type value2 = std::make_pair("1", "bar");
 
-    Store store1;
-    store1.insert(std::pair<const Key, Store::mapped_type>(value2));
+    Store thisStore;
 
-    Store store2;
+    Store otherStore;
+    otherStore.insert(std::pair<const Key, Store::mapped_type>(value2));
 
-    Store base;
-    base.insert(std::pair<const Key, Store::mapped_type>(value1));
+    Store baseStore;
+    baseStore.insert(std::pair<const Key, Store::mapped_type>(value1));
 
-    ASSERT_THROWS(store1.merge3(base, store2), merge_conflict_exception);
+    ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
+}
+
+TEST_F(StoreTest, MergeConflictingModifictionThisAndDeletionOther) {
+    Store::value_type value1 = std::make_pair("1", "foo");
+    Store::value_type value2 = std::make_pair("1", "bar");
+
+    Store thisStore;
+    thisStore.insert(std::pair<const Key, Store::mapped_type>(value2));
+
+    Store otherStore;
+
+    Store baseStore;
+    baseStore.insert(std::pair<const Key, Store::mapped_type>(value1));
+
+    ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
 }
 
 TEST_F(StoreTest, MergeConflictingInsertions) {
@@ -370,5 +370,40 @@ TEST_F(StoreTest, MergeConflictingInsertions) {
     Store base;
 
     ASSERT_THROWS(store1.merge3(base, store2), merge_conflict_exception);
+}
+
+TEST_F(StoreTest, UpperBoundTest) {
+    Store::value_type value1 = std::make_pair("1", "foo");
+    Store::value_type value2 = std::make_pair("2", "bar");
+    Store::value_type value3 = std::make_pair("3", "foo");
+    Store::value_type value4 = std::make_pair("4", "bar");
+
+    Store base;
+    base.insert(std::pair<const Key, Store::mapped_type>(value1));
+    base.insert(std::pair<const Key, Store::mapped_type>(value2));
+    base.insert(std::pair<const Key, Store::mapped_type>(value3));
+    base.insert(std::pair<const Key, Store::mapped_type>(value4));
+
+    Store::Iterator begin = base.upper_bound(value2.first);
+
+    ASSERT_EQ(begin->first, "3"); 
+}
+
+TEST_F(StoreTest, LowerBoundTest) {
+    Store::value_type value1 = std::make_pair("1", "foo");
+    Store::value_type value2 = std::make_pair("2", "bar");
+    Store::value_type value3 = std::make_pair("3", "foo");
+    Store::value_type value4 = std::make_pair("4", "bar");
+
+    Store base;
+    base.insert(std::pair<const Key, Store::mapped_type>(value1));
+    base.insert(std::pair<const Key, Store::mapped_type>(value2));
+    base.insert(std::pair<const Key, Store::mapped_type>(value3));
+    base.insert(std::pair<const Key, Store::mapped_type>(value4));
+
+    Store::Iterator begin = base.lower_bound(value2.first);
+
+    ASSERT_EQ(begin->first, "2"); 
+    
 }
 }  // namespace
