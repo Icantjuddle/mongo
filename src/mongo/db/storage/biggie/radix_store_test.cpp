@@ -30,8 +30,8 @@
 
 #include "mongo/db/storage/biggie/radix_store.h"
 #include "mongo/platform/basic.h"
-
 #include "mongo/unittest/unittest.h"
+#include "mongo/util/log.h"
 #include <iostream>
 
 namespace mongo {
@@ -97,6 +97,7 @@ TEST_F (RadixStoreTest, UpdateTest) {
     value_type value2 = std::make_pair("bar", "2");
     value_type value3 = std::make_pair("foz", "3");
     value_type upd = std::make_pair("foo", "test");
+
     thisStore.insert(value_type(value1));
     thisStore.insert(value_type(value2));
     thisStore.insert(value_type(value3));
@@ -115,6 +116,7 @@ TEST_F (RadixStoreTest, UpdateTest) {
     it++;
 
     thisStore.update(value_type(upd));
+
     StringStore::const_iterator it2 = thisStore.begin();
     StringStore::const_iterator copy_it2 = copy.begin();
     it2++;
@@ -125,6 +127,7 @@ TEST_F (RadixStoreTest, UpdateTest) {
 
     ASSERT_TRUE(&*copy_it2 != &*it2);
 } 
+
 TEST_F (RadixStoreTest, UpdateTest2) {
     value_type value1 = std::make_pair("foo", "2");
     value_type value2 = std::make_pair("bar", "1");
@@ -173,9 +176,11 @@ TEST_F(RadixStoreTest, EraseTest) {
     StringStore::size_type success = thisStore.erase(value1.first);
     ASSERT_TRUE(success);
     ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
-}
-
-TEST_F(RadixStoreTest, DeletePrefixOfAnotherKeyTest) {
+    
+    StringStore::const_iterator it = thisStore.begin();
+    while (it != thisStore.end()) {
+        it++;
+    }
 
     auto iter = thisStore.begin();
     ASSERT_TRUE(*iter == value2);
