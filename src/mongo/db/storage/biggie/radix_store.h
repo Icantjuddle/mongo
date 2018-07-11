@@ -386,6 +386,7 @@ public:
     size_type erase(const Key& key) {
         std::stack<Node*> context;
         Node* cur = root.get();
+        context.push(cur);
         for (char c : key) {
             cur = cur->children[c].get();
             if (cur == nullptr)
@@ -400,7 +401,7 @@ public:
         cur->data = boost::none;
 
         char tKey;
-        while (!context.empty() && cur->isLeaf() && cur->data != boost::none) {
+        while (!context.empty() && cur->isLeaf() && cur->data == boost::none) {
             tKey = cur->trieKey;
             cur = context.top();
             cur->children[tKey] = nullptr;
