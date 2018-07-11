@@ -368,7 +368,10 @@ public:
             for (char& c : key) {
                 if (cur->children[c] != nullptr) {
                     cur = cur->children[c];
-                } 
+                } else {
+                    cur->children[c] = std::make_shared<Node>(c);
+                    cur = cur->children[c];
+                }
             }
 
             sizeElems -= cur->data->second.size();

@@ -26,6 +26,8 @@
  *    it in the license file.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kDefault
+
 #include "mongo/db/storage/biggie/radix_store.h"
 #include "mongo/platform/basic.h"
 
@@ -158,7 +160,7 @@ TEST_F (RadixStoreTest, UpdateTest2) {
 
 }
 
-TEST_F(RadixStoreTest, DeleteTest) {
+TEST_F(RadixStoreTest, EraseTest) {
     value_type value1 = std::make_pair("abc", "1");
     value_type value2 = std::make_pair("def", "4");
     value_type value3 = std::make_pair("ghi", "5");
@@ -174,6 +176,18 @@ TEST_F(RadixStoreTest, DeleteTest) {
 }
 
 TEST_F(RadixStoreTest, DeletePrefixOfAnotherKeyTest) {
+
+    auto iter = thisStore.begin();
+    ASSERT_TRUE(*iter == value2);
+    ++iter;
+    ASSERT_TRUE(*iter == value3);
+    ++iter;
+    ASSERT_TRUE(iter == thisStore.end());
+    
+    ASSERT_FALSE(thisStore.erase("jkl"));
+}
+
+TEST_F(RadixStoreTest, ErasePrefixOfAnotherKeyTest) {
     std::string prefix = "bar";
     std::string otherKey = "barrista";
     value_type value1 = std::make_pair(prefix, "2");
@@ -193,7 +207,7 @@ TEST_F(RadixStoreTest, DeletePrefixOfAnotherKeyTest) {
     ASSERT_EQ(iter->first, otherKey);    
 }
 
-TEST_F(RadixStoreTest, DeleteKeyWithPrefixStillInStoreTest) {
+TEST_F(RadixStoreTest, EraseKeyWithPrefixStillInStoreTest) {
     std::string key = "barrista";
     std::string prefix = "bar";
     value_type value1 = std::make_pair(prefix, "2");
@@ -213,7 +227,7 @@ TEST_F(RadixStoreTest, DeleteKeyWithPrefixStillInStoreTest) {
     ASSERT_EQ(iter->first, prefix);
 }
 
-TEST_F(RadixStoreTest, DeleteKeyThatOverlapsAnotherKeyTest) {
+TEST_F(RadixStoreTest, EraseKeyThatOverlapsAnotherKeyTest) {
     std::string key = "foo";
     std::string otherKey = "foz";
     value_type value1 = std::make_pair(key, "1");
@@ -300,23 +314,6 @@ TEST_F(RadixStoreTest, ClearTest) {
     ASSERT_TRUE(thisStore.empty());
 }
 
-TEST_F(RadixStoreTest, EraseTest) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("2", "bar");
-
-    thisStore.insert(value_type(value1));
-    thisStore.insert(value_type(value2));
-    auto expected1 = StringStore::size_type(2);
-    ASSERT_EQ(thisStore.size(), expected1);
-
-    thisStore.erase(value1.first);
-    auto expected2 = StringStore::size_type(1);
-    ASSERT_EQ(thisStore.size(), expected2);
-
-    thisStore.erase("3");
-    ASSERT_EQ(thisStore.size(), expected2);
-}
-
 TEST_F(RadixStoreTest, DataSizeTest) {
     std::string str1 = "foo";
     std::string str2 = "bar65";
@@ -352,18 +349,18 @@ TEST_F(RadixStoreTest, MergeNoModifications) {
     value_type value1 = std::make_pair("1", "foo");
     value_type value2 = std::make_pair("2", "bar");
 
-    thisStore.insert(value_type(value1));
-    thisStore.insert(value_type(value2));
-
-    otherStore.insert(value_type(value1));
-    otherStore.insert(value_type(value2));
-
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value2));
+    
+    thisStore = baseStore;
+    otherStore = baseStore;
+   
+    expected.insert(value_type(value1));
+    expected.insert(value_type(value2));
 
     StringStore merged = thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == thisStore);
+    ASSERT_TRUE(merged == expected);
 }
 
 TEST_F(RadixStoreTest, MergeModifications) {
@@ -373,15 +370,16 @@ TEST_F(RadixStoreTest, MergeModifications) {
     value_type value3 = std::make_pair("3", "baz");
     value_type value4 = std::make_pair("3", "faz");
 
-    thisStore.insert(value_type(value2));
-    thisStore.insert(value_type(value3));
-
-    otherStore.insert(value_type(value1));
-    otherStore.insert(value_type(value4));
-
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value3));
+    
+    thisStore = baseStore;
+    otherStore = baseStore;
+    
+    thisStore.update(value_type(value2));
 
+    otherStore.update(value_type(value4));
+    
     expected.insert(value_type(value2));
     expected.insert(value_type(value4));
 
@@ -395,20 +393,17 @@ TEST_F(RadixStoreTest, MergeDeletions) {
     value_type value2 = std::make_pair("2", "moo");
     value_type value3 = std::make_pair("3", "bar");
     value_type value4 = std::make_pair("4", "baz");
-
-    thisStore.insert(value_type(value1));
-    thisStore.insert(value_type(value3));
-    thisStore.insert(value_type(value4));
-
-    otherStore.insert(value_type(value1));
-    otherStore.insert(value_type(value2));
-    otherStore.insert(value_type(value3));
-
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value2));
     baseStore.insert(value_type(value3));
     baseStore.insert(value_type(value4));
-
+    
+    thisStore = baseStore;
+    otherStore = baseStore;
+    
+    thisStore.erase(value2.first);
+    otherStore.erase(value4.first);
+    
     expected.insert(value_type(value1));
     expected.insert(value_type(value3));
 
@@ -423,16 +418,14 @@ TEST_F(RadixStoreTest, MergeInsertions) {
     value_type value3 = std::make_pair("3", "bar");
     value_type value4 = std::make_pair("4", "faz");
 
-    thisStore.insert(value_type(value1));
-    thisStore.insert(value_type(value2));
-    thisStore.insert(value_type(value4));
-
-    otherStore.insert(value_type(value1));
-    otherStore.insert(value_type(value2));
-    otherStore.insert(value_type(value3));
-
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value2));
+
+    thisStore = baseStore;
+    otherStore = baseStore;
+    
+    thisStore.insert(value_type(value4));
+    otherStore.insert(value_type(value3));
 
     expected.insert(value_type(value1));
     expected.insert(value_type(value2));
@@ -447,6 +440,9 @@ TEST_F(RadixStoreTest, MergeInsertions) {
 TEST_F(RadixStoreTest, MergeEmptyInsertionOther) {
     value_type value1 = std::make_pair("1", "foo");
 
+    thisStore = baseStore;
+    otherStore = baseStore;
+    
     otherStore.insert(value_type(value1));
 
     StringStore merged = thisStore.merge3(baseStore, otherStore);
@@ -457,14 +453,16 @@ TEST_F(RadixStoreTest, MergeEmptyInsertionOther) {
 TEST_F(RadixStoreTest, MergeEmptyInsertionThis) {
     value_type value1 = std::make_pair("1", "foo");
 
-    StringStore thisStore;
+    thisStore = baseStore;
+    otherStore = baseStore;
+    
     thisStore.insert(value_type(value1));
 
     StringStore merged = thisStore.merge3(baseStore, otherStore);
 
     ASSERT_TRUE(merged == thisStore);
 }
-
+/*
 TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
     value_type value1 = std::make_pair("1", "foo");
     value_type value2 = std::make_pair("2", "baz");
@@ -475,20 +473,21 @@ TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
     value_type value7 = std::make_pair("1", "modified");
     value_type value8 = std::make_pair("2", "modified2");
 
-    thisStore.insert(value_type(value7));
-    thisStore.insert(value_type(value2));
-    thisStore.insert(value_type(value3));
-    thisStore.insert(value_type(value5));
-
-    otherStore.insert(value_type(value1));
-    otherStore.insert(value_type(value8));
-    otherStore.insert(value_type(value4));
-    otherStore.insert(value_type(value6));
-
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value2));
     baseStore.insert(value_type(value3));
     baseStore.insert(value_type(value4));
+
+    thisStore = baseStore;
+    otherStore = baseStore;
+   
+    thisStore.update(value_type(value7));
+    thisStore.erase(value4.first);
+    thisStore.insert(value_type(value5));
+
+    otherStore.update(value_type(value8));
+    otherStore.erase(value3.first);
+    otherStore.insert(value_type(value6));
 
     expected.insert(value_type(value7));
     expected.insert(value_type(value8));
@@ -499,29 +498,37 @@ TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
 
     ASSERT_TRUE(merged == expected);
 }
-
+*/
 TEST_F(RadixStoreTest, MergeConflictingModifications) {
     value_type value1 = std::make_pair("1", "foo");
     value_type value2 = std::make_pair("1", "bar");
     value_type value3 = std::make_pair("1", "baz");
 
-    thisStore.insert(value_type(value2));
-
-    otherStore.insert(value_type(value3));
-
     baseStore.insert(value_type(value1));
 
+    thisStore = baseStore;
+    otherStore = baseStore;
+   
+    thisStore.update(value_type(value2));
+
+    otherStore.update(value_type(value3));
+
     ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
-}
+} 
 
 TEST_F(RadixStoreTest, MergeConflictingModifictionOtherAndDeletionThis) {
     value_type value1 = std::make_pair("1", "foo");
     value_type value2 = std::make_pair("1", "bar");
 
-    otherStore.insert(value_type(value2));
-
     baseStore.insert(value_type(value1));
 
+    thisStore = baseStore;
+    otherStore = baseStore;
+    log() << "erase"; 
+    thisStore.erase(value1.first);
+    log() << "update";
+    otherStore.update(value_type(value2));
+    log() << "merge";
     ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
 }
 
@@ -529,9 +536,14 @@ TEST_F(RadixStoreTest, MergeConflictingModifictionThisAndDeletionOther) {
     value_type value1 = std::make_pair("1", "foo");
     value_type value2 = std::make_pair("1", "bar");
 
-    thisStore.insert(value_type(value2));
-
     baseStore.insert(value_type(value1));
+
+    thisStore = baseStore;
+    otherStore = baseStore;
+   
+    thisStore.update(value_type(value2));
+
+    otherStore.erase(value1.first);
 
     ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
 }
@@ -541,12 +553,14 @@ TEST_F(RadixStoreTest, MergeConflictingInsertions) {
     value_type value2 = std::make_pair("1", "foo");
 
     thisStore = baseStore;
+    otherStore = baseStore;
+    
     thisStore.insert(value_type(value2));
 
     otherStore.insert(value_type(value1));
 
     ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
-}
+} 
 
 TEST_F(RadixStoreTest, ReverseUpperBoundTest) {
     value_type value1 = std::make_pair("foo", "1");
