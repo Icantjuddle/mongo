@@ -31,10 +31,10 @@
 #include <array>
 #include <boost/optional.hpp>
 #include <exception>
-#include <string>
-#include <stack>
 #include <iostream>
 #include <memory>
+#include <stack>
+#include <string>
 
 namespace mongo {
 namespace biggie {
@@ -65,7 +65,7 @@ public:
         Node* current;
         bool reverse;
 
-        //constructors
+        // constructors
         radix_iterator() : root(nullptr), current(nullptr), reverse(false) {}
 
         radix_iterator(const std::shared_ptr<Node>& root, Node* current)
@@ -90,18 +90,21 @@ public:
             std::stack<Node*> context;
             Node* cur = root.get();
             context.push(cur);
-            for (char& c : key) {
+            const char* begin = key.data();
+            for (size_t i = 0; i < key.size(); i++) {
+                const char c = *(begin + i);
                 cur = cur->children[c].get();
+                // remove this push and the following pop by ensuring you never push a leaf node
+                // onto the stack
                 context.push(cur);
             }
 
             // need to go back up
             Node* it = context.top();
             context.pop();
-            char oldKey;
             current = nullptr;
             while (!context.empty()) {
-                oldKey = it->trieKey;
+                char oldKey = it->trieKey;
                 it = context.top();
                 context.pop();
                 // explore the next branches
@@ -125,7 +128,10 @@ public:
             std::stack<Node*> context;
             Node* cur = root.get();
             context.push(cur);
-            for (char& c : key) {
+
+            const char* begin = key.data();
+            for (size_t i = 0; i < key.size(); i++) {
+                const char c = *(begin + i);
                 cur = cur->children[c].get();
                 context.push(cur);
             }
@@ -156,7 +162,7 @@ public:
         }
 
         void traverseLeftSubtree() {
-            //want to do at least one iteration
+            // want to do at least one iteration
             do {
                 for (int i = 0; i < 256; i++) {
                     if (current->children[i] != nullptr) {
@@ -168,14 +174,14 @@ public:
         }
 
         void traverseRightSubtree() {
-            while (!current->isLeaf()) {
+            do {
                 for (int i = 255; i >= 0; i--) {
                     if (current->children[i] != nullptr) {
                         current = current->children[i].get();
                         break;
                     }
                 }
-            }
+            } while (current->data == boost::none);
         }
 
     public:
@@ -228,27 +234,10 @@ public:
 
     // Constructors
     RadixStore(const RadixStore& other) {
+        // INCORRECT - no need to recreate the tree
         root = other.root;
         numElems = other.numElems;
         sizeElems = other.sizeElems;
-        std::stack<std::shared_ptr<Node>> context;
-        std::stack<std::shared_ptr<Node>> otherContext;
-        otherContext.push(other.root);
-        context.push(root);
-        while (!context.empty()) {
-            std::shared_ptr<Node> cursor = context.top();
-            context.pop();
-            std::shared_ptr<Node> otherCursor = otherContext.top();
-            otherContext.pop();
-
-            for (int i=0; i<256; i++) {
-                cursor->children[i] = otherCursor->children[i];
-                if (cursor->children[i] != nullptr) {
-                    context.push(cursor->children[i]);
-                    otherContext.push(otherCursor->children[i]);
-                }
-            }
-        }
     }
 
     RadixStore() {
@@ -300,56 +289,149 @@ public:
     }
 
     std::pair<const_iterator, bool> insert(value_type&& value) {
+        std::cout << "~~~~~~~~~ INSERT START WITH KEY " << value.first << std::endl;
         Key key = value.first;
 
-        // empty keys are not allowed
-        if (value.first.size() == 0)
-            return std::make_pair(RadixStore::end(), false);
+        Node* item = findHelper(key);
+        if (item != nullptr || key.size() == 0)
+            return std::make_pair(end(), false);
 
-        // if key exists, insert fails
-        auto item = RadixStore::find(key);
-        if (item != RadixStore::end())
-            return std::make_pair(item, false);
+        auto cur = root;
+        std::shared_ptr<Node> parent = nullptr;
+        const char* begin = key.data();
+        size_t i = 0;
+        // The node, if unique, will have two pointers to it, not one. This is because the parent
+        // node obviously holds it as a child node, but now also we have 'cur' pointing to it.
+        while (cur.use_count() - 1 == 1) {
 
-        if (root.use_count() > 1) {
-            auto old = root;
-            root = std::make_shared<Node>('\0');
-            auto cur = root;
-            for (char& c : key) {
-                if (old != nullptr) {
-                    for (int i = 0; i < 256; i++) {
-                        cur->children[i] = old->children[i];
-                    }
-                    old = old->children[c];
-                }
+            if (i >= key.size())
+                break;
 
+            const char c = begin[i];
+            std::cout << "1 insert following " << c << std::endl;
+            if (cur->children[c] != nullptr) {
+                parent = cur;
+                cur = cur->children[c];
+            } else {
                 cur->children[c] = std::make_shared<Node>(c);
+                parent = cur;
                 cur = cur->children[c];
             }
-            cur->data.emplace(value.first, value.second);
-            RadixStore::const_iterator it(root, cur.get());
-            numElems++;
-            sizeElems += value.second.size();
-            return std::pair<RadixStore::const_iterator, bool>(it, true);
-        } else {
-            return RadixStore::insertHelper(std::move(value));
+
+            ++i;
         }
+
+        // std::shared_ptr<Node> old = parent;
+        std::shared_ptr<Node> old = cur;
+        if (i != 0 && i < key.size()) {
+            i--;
+            cur = parent;
+            old = parent;
+        }
+
+        if (i == 0) {
+            // cur is root
+            old = root;
+            root = std::make_shared<Node>('\0');
+            cur = root;
+
+            for (int i = 0; i < 256; i++) {
+                cur->children[i] = old->children[i];
+            }
+            // old = old->children[begin[0]];
+        }
+
+
+        std::shared_ptr<Node> spec = nullptr;
+        for (; i < key.size(); i++) {
+            const char c = begin[i];
+            std::cout << "2 insert following " << c << std::endl;
+
+            cur->children[c] = std::make_shared<Node>(c);
+            cur = cur->children[c];
+
+            if (old != nullptr)
+                old = old->children[c];
+
+            if (old != nullptr) {
+                for (int i = 0; i < 256; i++) {
+                    cur->children[i] = old->children[i];
+                    if (cur->children[i] != nullptr)
+                        std::cout << "inserted subtree with node " << (char)i << std::endl;
+                }
+
+                if (old->data != boost::none) {
+                    cur->data.emplace(old->data->first, old->data->second);
+                    std::cout << "remembered data " << old->data->first << std::endl;
+                    spec = cur;
+                }
+            }
+        }
+
+        cur->data.emplace(value.first, value.second);
+        numElems++;
+        sizeElems += value.second.size();
+
+        const_iterator it(root, cur.get());
+        std::cout << "~~~~~~~~~ INSERT END WITH KEY " << value.first << std::endl;
+        return std::pair<const_iterator, bool>(it, true);
     }
+
+    // std::pair<const_iterator, bool> insert(value_type&& value) {
+    //    Key key = value.first;
+
+    //    // empty keys are not allowed
+    //    if (value.first.size() == 0)
+    //        return std::make_pair(RadixStore::end(), false);
+
+    //    // if key exists, insert fails
+    //    auto item = RadixStore::find(key);
+    //    if (item != RadixStore::end())
+    //        return std::make_pair(item, false);
+
+    //    if (root.use_count() > 1) {
+    //        auto old = root;
+    //        root = std::make_shared<Node>('\0');
+    //        auto cur = root;
+    //        const char* begin = key.data();
+    //        for (size_t i = 0; i < key.size(); i++) {
+    //            const char c = *(begin + i);
+    //            if (old != nullptr) {
+    //                for (int i = 0; i < 256; i++) {
+    //                    cur->children[i] = old->children[i];
+    //                }
+    //                old = old->children[c];
+    //            }
+
+    //            cur->children[c] = std::make_shared<Node>(c);
+    //            cur = cur->children[c];
+    //        }
+    //        cur->data.emplace(value.first, value.second);
+    //        RadixStore::const_iterator it(root, cur.get());
+    //        numElems++;
+    //        sizeElems += value.second.size();
+    //        return std::pair<RadixStore::const_iterator, bool>(it, true);
+    //    } else {
+    //        return RadixStore::insertHelper(std::move(value));
+    //    }
+    //}
 
     std::pair<const_iterator, bool> update(value_type&& value) {
         Key key = value.first;
 
-        //if item does not exist - cannot update
+        // if item does not exist - cannot update
         auto item = RadixStore::find(key);
-        if (item == RadixStore::end()) 
+        if (item == RadixStore::end())
             return std::make_pair(item, false);
 
         if (root.use_count() > 1) {
             auto old = root;
             root = std::make_shared<Node>('\0');
             auto cur = root;
-            for (char& c : key) {
-                for (int i=0; i<256; i++) {
+            const char* begin = key.data();
+            for (size_t i = 0; i < key.size(); i++) {
+                const char c = *(begin + i);
+                for (int i = 0; i < 256; i++) {
                     cur->children[i] = old->children[i];
                 }
                 cur->children[c] = std::make_shared<Node>(c);
@@ -365,7 +447,9 @@ public:
             return std::pair<RadixStore::const_iterator, bool>(it, true);
         } else {
             auto cur = root;
-            for (char& c : key) {
+            const char* begin = key.data();
+            for (size_t i = 0; i < key.size(); i++) {
+                const char c = *(begin + i);
                 if (cur->children[c] != nullptr) {
                     cur = cur->children[c];
                 } else {
@@ -384,30 +468,63 @@ public:
     }
 
     size_type erase(const Key& key) {
+
         std::stack<Node*> context;
         Node* cur = root.get();
         context.push(cur);
-        for (char c : key) {
+        const char* begin = key.data();
+        for (size_t i = 0; i < key.size(); i++) {
+            const char c = *(begin + i);
             cur = cur->children[c].get();
             if (cur == nullptr)
                 return false;
             context.push(cur);
         }
 
-        cur = context.top();
-        context.pop();
-        numElems--;
-        sizeElems -= cur->data->second.size();
-        cur->data = boost::none;
+        if (root.use_count() > 1) {
+            auto old = root;
+            root = std::make_shared<Node>('\0');
 
-        char tKey;
-        while (!context.empty() && cur->isLeaf() && cur->data == boost::none) {
-            tKey = cur->trieKey;
-            cur = context.top();
-            cur->children[tKey] = nullptr;
-            context.pop();
+            context = std::stack<Node*>();
+            auto cur = root;
+            context.push(cur.get());
+
+            const char* begin = key.data();
+            for (size_t i = 0; i < key.size(); i++) {
+                const char c = *(begin + i);
+                for (int i = 0; i < 256; i++) {
+                    cur->children[i] = old->children[i];
+                }
+                cur->children[c] = std::make_shared<Node>(c);
+                cur = cur->children[c];
+                old = old->children[c];
+
+                if (old->data != boost::none) {
+                    cur->data.emplace(old->data->first, old->data->second);
+                }
+                context.push(cur.get());
+            }
+
+            // For the last node, in case it is not a leaf node and has children.
+            for (int i = 0; i < 256; i++) {
+                cur->children[i] = old->children[i];
+            }
         }
 
+        Node* node = context.top();
+        context.pop();
+        numElems--;
+
+        sizeElems -= node->data->second.size();
+        node->data = boost::none;
+
+        char tKey;
+        while (!context.empty() && node->isLeaf() && node->data == boost::none) {
+            tKey = node->trieKey;
+            node = context.top();
+            node->children[tKey] = nullptr;
+            context.pop();
+        }
         return true;
     }
 
@@ -418,7 +535,8 @@ public:
 
         // Merges all differences between this and base, along with modifications from other.
         RadixStore::const_iterator iter = this->begin();
-        for (; iter != this->end(); iter++) {
+        // for (; iter != this->end(); iter++) {
+        while (iter != this->end()) {
             const value_type val = *iter;
             RadixStore::const_iterator baseIter = base.find(val.first);
             RadixStore::const_iterator otherIter = other.find(val.first);
@@ -451,6 +569,7 @@ public:
                 // Merges insertions from this.
                 store.insert(RadixStore::value_type(val));
             }
+            iter++;
         }
 
         // Merges insertions and deletions from other.
@@ -471,11 +590,12 @@ public:
 
         return store;
     }
-    
+
     // iterators
     const_iterator begin() const noexcept {
-        if (numElems == 0)
+        if (numElems == 0) {
             return RadixStore::end();
+        }
 
         auto cur = root;
         while (cur->data == boost::none) {
@@ -513,34 +633,28 @@ public:
         return RadixStore::const_iterator();
     }
 
-    //iterator begin() const noexcept;
-    //iterator rbegin() const noexcept;
-    //iterator end() const noexcept;
-    //iterator rend() const noexcept;
+    // iterator begin() const noexcept;
+    // iterator rbegin() const noexcept;
+    // iterator end() const noexcept;
+    // iterator rend() const noexcept;
 
-    //iterator find(const Key& key);
+    // iterator find(const Key& key);
+
     const_iterator find(const Key& key) const {
         RadixStore::const_iterator it = RadixStore::end();
 
-        auto cur = root;
-        for (char c : key) {
-            if (cur->children[c] != nullptr)
-                cur = cur->children[c];
-            else
-                return it;
-        }
-        
-        if (cur->data != boost::none)
-            return RadixStore::const_iterator(root, cur.get());
-        else
+        Node* cur = findHelper(key);
+        if (cur == nullptr)
             return it;
+        else
+            return RadixStore::const_iterator(root, cur);
     }
 
     const_iterator rlower_bound(const Key& key) const {
         const_iterator it = find(key);
         it.reverse = true;
         return it;
-    } 
+    }
 
     const_iterator rupper_bound(const Key& key) const {
         const_iterator it = find(key);
@@ -550,11 +664,11 @@ public:
 
         it++;
         return it;
-    } 
+    }
 
     const_iterator lower_bound(const Key& key) const {
         return find(key);
-    } 
+    }
 
     const_iterator upper_bound(const Key& key) const {
         const_iterator it = find(key);
@@ -563,16 +677,17 @@ public:
 
         it++;
         return it;
-    } 
+    }
 
     typename RadixStore::iterator::difference_type distance(iterator iter1, iterator iter2) {
         return std::distance(iter1, iter2);
     }
 
-    typename RadixStore::iterator::difference_type distance(const_iterator iter1, const_iterator iter2) {
+    typename RadixStore::iterator::difference_type distance(const_iterator iter1,
+                                                            const_iterator iter2) {
         return std::distance(iter1, iter2);
     }
-    
+
 private:
     class Node {
     private:
@@ -596,11 +711,30 @@ private:
         }
     };
 
+    Node* findHelper(const Key& key) const {
+        auto cur = root;
+        const char* begin = key.data();
+        for (size_t i = 0; i < key.size(); i++) {
+            const char c = *(begin + i);
+            if (cur->children[c] != nullptr)
+                cur = cur->children[c];
+            else
+                return nullptr;
+        }
+
+        if (cur->data == boost::none)
+            return nullptr;
+
+        return cur.get();
+    }
+
     std::pair<const_iterator, bool> insertHelper(value_type&& value) {
         Key key = value.first;
 
         auto cur = root;
-        for (char& c : key) {
+        const char* begin = key.data();
+        for (size_t i = 0; i < key.size(); i++) {
+            const char c = *(begin + i);
             if (cur->children[c] != nullptr) {
                 cur = cur->children[c];
             } else {
