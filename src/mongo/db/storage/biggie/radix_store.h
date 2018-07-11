@@ -90,7 +90,9 @@ public:
             std::stack<Node*> context;
             Node* cur = root.get();
             context.push(cur);
-            for (char& c : key) {
+            const char* begin = key.data();
+            for (size_t i=0; i < key.size(); i++) {
+                const char c = *(begin + i);
                 cur = cur->children[c].get();
                 context.push(cur);
             }
@@ -125,7 +127,10 @@ public:
             std::stack<Node*> context;
             Node* cur = root.get();
             context.push(cur);
-            for (char& c : key) {
+
+            const char* begin = key.data();
+            for (size_t i=0; i < key.size(); i++) {
+                const char c = *(begin + i);
                 cur = cur->children[c].get();
                 context.push(cur);
             }
@@ -315,7 +320,9 @@ public:
             auto old = root;
             root = std::make_shared<Node>('\0');
             auto cur = root;
-            for (char& c : key) {
+            const char* begin = key.data();
+            for (size_t i=0; i < key.size(); i++) {
+                const char c = *(begin+i);
                 if (old != nullptr) {
                     for (int i = 0; i < 256; i++) {
                         cur->children[i] = old->children[i];
@@ -348,7 +355,9 @@ public:
             auto old = root;
             root = std::make_shared<Node>('\0');
             auto cur = root;
-            for (char& c : key) {
+            const char* begin = key.data();
+            for (size_t i=0; i < key.size(); i++) {
+                const char c = *(begin+i);
                 for (int i=0; i<256; i++) {
                     cur->children[i] = old->children[i];
                 }
@@ -365,7 +374,9 @@ public:
             return std::pair<RadixStore::const_iterator, bool>(it, true);
         } else {
             auto cur = root;
-            for (char& c : key) {
+            const char* begin = key.data();
+            for (size_t i=0; i < key.size(); i++) {
+                const char c = *(begin+i);
                 if (cur->children[c] != nullptr) {
                     cur = cur->children[c];
                 } else {
@@ -387,7 +398,9 @@ public:
         std::stack<Node*> context;
         Node* cur = root.get();
         context.push(cur);
-        for (char c : key) {
+        const char* begin = key.data();
+        for (size_t i=0; i < key.size(); i++) {
+            const char c = *(begin+i);
             cur = cur->children[c].get();
             if (cur == nullptr)
                 return false;
@@ -397,6 +410,7 @@ public:
         cur = context.top();
         context.pop();
         numElems--;
+
         sizeElems -= cur->data->second.size();
         cur->data = boost::none;
 
@@ -523,7 +537,9 @@ public:
         RadixStore::const_iterator it = RadixStore::end();
 
         auto cur = root;
-        for (char c : key) {
+        const char* begin = key.data();
+        for (size_t i=0; i < key.size(); i++) {
+            const char c = *(begin+i);
             if (cur->children[c] != nullptr)
                 cur = cur->children[c];
             else
@@ -600,7 +616,9 @@ private:
         Key key = value.first;
 
         auto cur = root;
-        for (char& c : key) {
+        const char* begin = key.data();
+        for (size_t i=0; i < key.size(); i++) {
+            const char c = *(begin + i);
             if (cur->children[c] != nullptr) {
                 cur = cur->children[c];
             } else {
