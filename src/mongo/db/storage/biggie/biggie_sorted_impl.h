@@ -30,6 +30,7 @@
 #pragma once
 
 #include "mongo/db/storage/biggie/store.h"
+#include "mongo/db/storage/key_string.h"
 #include "mongo/db/storage/sorted_data_interface.h"
 
 namespace mongo {
@@ -37,21 +38,35 @@ namespace biggie {
 
 class SortedDataBuilderInterface : public ::mongo::SortedDataBuilderInterface {
 public:
+    SortedDataBuilderInterface(OperationContext* opCtx,
+                               bool dupsAllowed,
+                               Ordering order,
+                               std::string prefix,
+                               std::string postfix);
+    void commit(bool mayInterrupt) override;
     virtual Status addKey(const BSONObj& key, const RecordId& loc);
+    OperationContext* opCtx;
+    bool dupsAllowed;
+    Ordering order;
+    std::string prefix;
+    std::string postfix;
+    bool hasLast;
+    std::string lastKeyToString;
+    int64_t lastRID;
 };
 
-
 class SortedDataInterface : public ::mongo::SortedDataInterface {
-    // TODO : all of these probably do not need to be public.
+private:
+    const Ordering _order;
+    std::string _prefix;
+    std::string _postfix;
+    std::string _prefixBSON;
+    std::string _postfixBSON;
+    bool isUnique;
+    bool dupsAllowed;
+
 public:
-    // TODO : this definitely needs to change in the future.
-    // TODO : also, what is ephemeralForTest indexSet referring to.
-    std::shared_ptr<Store<std::string, std::string>> _data;
-    // TODO : this constructor eventually needs to take arguments like in ephemeralForTest.
-    SortedDataInterface(){};
-
-    // TODO : figure out if all these functions should be public.
-
+    SortedDataInterface(const Ordering& ordering, bool isUnique, StringData ident);
     virtual SortedDataBuilderInterface* getBulkBuilder(OperationContext* opCtx, bool dupsAllowed);
     virtual Status insert(OperationContext* opCtx,
                           const BSONObj& key,
@@ -70,20 +85,42 @@ public:
                                    double scale) const;
     virtual long long getSpaceUsedBytes(OperationContext* opCtx) const;
     virtual bool isEmpty(OperationContext* opCtx);
-    // TODO : what cursor is this?
-    // this is not the right cursor I think.
     virtual std::unique_ptr<mongo::SortedDataInterface::Cursor> newCursor(
         OperationContext* opCtx, bool isForward = true) const override;
     virtual Status initAsEmpty(OperationContext* opCtx);
-
+    // default is a forward Cursor
     class Cursor final : public ::mongo::SortedDataInterface::Cursor {
-        OperationContext* _opCtx;
-        bool _isForward;
-        // TODO : should all of these be public?
+    private:
+        OperationContext* opCtx;
+        StringStore* workingCopy;  // should not be nullptr
+        boost::optional<StringStore::iterator> endPos;
+        boost::optional<StringStore::reverse_iterator> endPosReverse;
+        bool endPosValid;
+        bool _forward;
+        bool atEOF;
+        bool lastMoveWasRestore;
+        std::string saveKey;
+        std::string _prefix;
+        std::string _postfix;
+        StringStore::iterator forwardIt;
+        StringStore::reverse_iterator reverseIt;
+        Ordering _order;
+        std::string _postfixBSON;
+        std::string _prefixBSON;
+        bool endPosIncl;
+        boost::optional<BSONObj> endPosKey;
+        bool isUnique;
+        boost::optional<IndexKeyEntry> seekAfterProcessing(BSONObj finalKey, bool inclusive);
+
     public:
-        // TODO : This will need more arguments later on for a real cursor.
-        Cursor(OperationContext* opCtx, bool isForward);
-        virtual void setEndPosition(const BSONObj& key, bool inclusive);
+        Cursor(OperationContext* opCtx,
+               bool isForward,
+               std::string _prefix,
+               std::string _postfix,
+               StringStore* workingCopy,
+               Ordering order,
+               bool isUnique);
+        virtual void setEndPosition(const BSONObj& key, bool inclusive) override;
         virtual boost::optional<IndexKeyEntry> next(RequestedInfo parts = kKeyAndLoc);
         virtual boost::optional<IndexKeyEntry> seek(const BSONObj& key,
                                                     bool inclusive,
