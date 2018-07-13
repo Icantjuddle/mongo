@@ -341,8 +341,6 @@ public:
             // old = old->children[begin[0]];
         }
 
-
-        std::shared_ptr<Node> spec = nullptr;
         for (; i < key.size(); i++) {
             const char c = begin[i];
             std::cout << "2 insert following " << c << std::endl;
@@ -363,7 +361,6 @@ public:
                 if (old->data != boost::none) {
                     cur->data.emplace(old->data->first, old->data->second);
                     std::cout << "remembered data " << old->data->first << std::endl;
-                    spec = cur;
                 }
             }
         }
