@@ -152,36 +152,36 @@ TEST_F(RadixStoreTest, InsertTest3) {
     ASSERT_TRUE(check_this == thisStore.end());
     ASSERT_TRUE(check_other == otherStore.end());
 
-    log() << "going through otherStore PRE INSERT";
-    StringStore::const_iterator pre_i2 = otherStore.begin();
-    while (pre_i2 != otherStore.end()) {
-        log() << pre_i2->first;
-        pre_i2++;
-    }
+    // log() << "going through otherStore PRE INSERT";
+    // StringStore::const_iterator pre_i2 = otherStore.begin();
+    // while (pre_i2 != otherStore.end()) {
+    //    log() << pre_i2->first;
+    //    pre_i2++;
+    //}
 
-    StringStore::const_iterator pre_i3 = thisStore.begin();
-    log() << "going through thisStore PRE INSERT";
-    while (pre_i3 != thisStore.end()) {
-        log() << pre_i3->first;
-        pre_i3++;
-    }
+    // StringStore::const_iterator pre_i3 = thisStore.begin();
+    // log() << "going through thisStore PRE INSERT";
+    // while (pre_i3 != thisStore.end()) {
+    //    log() << pre_i3->first;
+    //    pre_i3++;
+    //}
 
     // other store is singly owned, should not be a 2 insert from root
     otherStore.insert(value_type(value6));
 
-    log() << "going through otherStore POST INSERT";
-    StringStore::const_iterator i2 = otherStore.begin();
-    while (i2 != otherStore.end()) {
-        log() << i2->first;
-        i2++;
-    }
+    // log() << "going through otherStore POST INSERT";
+    // StringStore::const_iterator i2 = otherStore.begin();
+    // while (i2 != otherStore.end()) {
+    //    log() << i2->first;
+    //    i2++;
+    //}
 
-    StringStore::const_iterator i3 = thisStore.begin();
-    log() << "going through thisStore POST INSERT";
-    while (i3 != thisStore.end()) {
-        log() << i3->first;
-        i3++;
-    }
+    // StringStore::const_iterator i3 = thisStore.begin();
+    // log() << "going through thisStore POST INSERT";
+    // while (i3 != thisStore.end()) {
+    //    log() << i3->first;
+    //    i3++;
+    //}
 }
 
 // TEST_F(RadixStoreTest, FindTest) {
