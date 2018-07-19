@@ -107,13 +107,11 @@ public:
                 char oldKey = it->trieKey;
                 it = context.top();
                 context.pop();
-                std::cout << "going up to " << it->trieKey << " and looking past child node "
-                          << oldKey << std::endl;
+
                 // explore the next branches
                 for (int i = oldKey + 1; i < 256; i++) {
                     if (it->children[i] != nullptr) {
 
-                        std::cout << "found " << it->children[i]->trieKey << std::endl;
                         if (it->children[i]->data != boost::none) {
                             current = it->children[i].get();
                             return;
@@ -297,129 +295,14 @@ public:
     }
 
     std::pair<const_iterator, bool> insert(value_type&& value) {
-        std::cout << "~~~~~~~~~ INSERT START WITH KEY " << value.first << std::endl;
         Key key = value.first;
 
         Node* item = findHelper(key);
         if (item != nullptr || key.size() == 0)
             return std::make_pair(end(), false);
 
-        auto cur = root;
-        std::shared_ptr<Node> parent = nullptr;
-        const char* begin = key.data();
-        size_t i = 0;
-        // The node, if unique, will have two pointers to it, not one. This is because the parent
-        // node obviously holds it as a child node, but now also we have 'cur' pointing to it.
-        while (cur.use_count() - 1 == 1) {
-
-            if (i >= key.size())
-                break;
-
-            const char c = begin[i];
-            std::cout << "1 insert following " << c << std::endl;
-            if (cur->children[c] != nullptr) {
-                parent = cur;
-                cur = cur->children[c];
-            } else {
-                cur->children[c] = std::make_shared<Node>(c);
-                parent = cur;
-                cur = cur->children[c];
-            }
-
-            ++i;
-        }
-
-        // std::shared_ptr<Node> old = parent;
-        std::shared_ptr<Node> old = cur;
-        if (i != 0 && i < key.size()) {
-            i--;
-            cur = parent;
-            old = parent;
-        }
-
-        if (i == 0) {
-            // cur is root
-            old = root;
-            root = std::make_shared<Node>('\0');
-            cur = root;
-
-            for (int i = 0; i < 256; i++) {
-                cur->children[i] = old->children[i];
-            }
-            // old = old->children[begin[0]];
-        }
-
-        for (; i < key.size(); i++) {
-            const char c = begin[i];
-            std::cout << "2 insert following " << c << std::endl;
-
-            cur->children[c] = std::make_shared<Node>(c);
-            cur = cur->children[c];
-
-            if (old != nullptr)
-                old = old->children[c];
-
-            if (old != nullptr) {
-                for (int i = 0; i < 256; i++) {
-                    cur->children[i] = old->children[i];
-                    if (cur->children[i] != nullptr)
-                        std::cout << "inserted subtree with node " << (char)i << std::endl;
-                }
-
-                if (old->data != boost::none) {
-                    cur->data.emplace(old->data->first, old->data->second);
-                    std::cout << "remembered data " << old->data->first << std::endl;
-                }
-            }
-        }
-
-        cur->data.emplace(value.first, value.second);
-        numElems++;
-        sizeElems += value.second.size();
-
-        const_iterator it(root, cur.get());
-        std::cout << "~~~~~~~~~ INSERT END WITH KEY " << value.first << std::endl;
-        return std::pair<const_iterator, bool>(it, true);
+        return insertHelper(std::move(value));
     }
-
-    // std::pair<const_iterator, bool> insert(value_type&& value) {
-    //    Key key = value.first;
-
-    //    // empty keys are not allowed
-    //    if (value.first.size() == 0)
-    //        return std::make_pair(RadixStore::end(), false);
-
-    //    // if key exists, insert fails
-    //    auto item = RadixStore::find(key);
-    //    if (item != RadixStore::end())
-    //        return std::make_pair(item, false);
-
-    //    if (root.use_count() > 1) {
-    //        auto old = root;
-    //        root = std::make_shared<Node>('\0');
-    //        auto cur = root;
-    //        const char* begin = key.data();
-    //        for (size_t i = 0; i < key.size(); i++) {
-    //            const char c = *(begin + i);
-    //            if (old != nullptr) {
-    //                for (int i = 0; i < 256; i++) {
-    //                    cur->children[i] = old->children[i];
-    //                }
-    //                old = old->children[c];
-    //            }
-
-    //            cur->children[c] = std::make_shared<Node>(c);
-    //            cur = cur->children[c];
-    //        }
-    //        cur->data.emplace(value.first, value.second);
-    //        RadixStore::const_iterator it(root, cur.get());
-    //        numElems++;
-    //        sizeElems += value.second.size();
-    //        return std::pair<RadixStore::const_iterator, bool>(it, true);
-    //    } else {
-    //        return RadixStore::insertHelper(std::move(value));
-    //    }
-    //}
 
     std::pair<const_iterator, bool> update(value_type&& value) {
         Key key = value.first;
@@ -429,109 +312,103 @@ public:
         if (item == RadixStore::end())
             return std::make_pair(item, false);
 
-        if (root.use_count() > 1) {
-            auto old = root;
-            root = std::make_shared<Node>('\0');
-            auto cur = root;
-            const char* begin = key.data();
-            for (size_t i = 0; i < key.size(); i++) {
-                const char c = *(begin + i);
-                for (int i = 0; i < 256; i++) {
-                    cur->children[i] = old->children[i];
-                }
-                cur->children[c] = std::make_shared<Node>(c);
-                cur = cur->children[c];
-                old = old->children[c];
-            }
-            sizeElems -= old->data->second.size();
-            sizeElems += value.second.size();
-
-            cur->data.emplace(value.first, value.second);
-
-            RadixStore::const_iterator it(root, cur.get());
-            return std::pair<RadixStore::const_iterator, bool>(it, true);
-        } else {
-            auto cur = root;
-            const char* begin = key.data();
-            for (size_t i = 0; i < key.size(); i++) {
-                const char c = *(begin + i);
-                if (cur->children[c] != nullptr) {
-                    cur = cur->children[c];
-                } else {
-                    cur->children[c] = std::make_shared<Node>(c);
-                    cur = cur->children[c];
-                }
-            }
-
-            sizeElems -= cur->data->second.size();
-            sizeElems += value.second.size();
-            cur->data.emplace(value.first, value.second);
-            RadixStore::const_iterator it = RadixStore::const_iterator(root, cur.get());
-
-            return std::pair<RadixStore::const_iterator, bool>(it, true);
-        }
+        return insertHelper(std::move(value));
     }
 
     size_type erase(const Key& key) {
+        // TODO - have safety checks aka make sure key exists
+        std::stack<std::pair<Node*, bool>> context;
 
-        std::stack<Node*> context;
-        Node* cur = root.get();
-        context.push(cur);
+        std::shared_ptr<Node> cur = root;
+        bool isUniquelyOwned = root.use_count() - 1 == 1;
+        context.push(std::make_pair(cur, isUniquelyOwned));
+
         const char* begin = key.data();
         for (size_t i = 0; i < key.size(); i++) {
-            const char c = *(begin + i);
-            cur = cur->children[c].get();
-            if (cur == nullptr)
-                return false;
-            context.push(cur);
+            const char c = begin[i];
+            cur = cur->children[c];
+            isUniquelyOwned = isUniquelyOwned && cur.use_count() - 1 == 1;
+            context.push(std::make_pair(cur, isUniquelyOwned));
         }
 
-        if (root.use_count() > 1) {
-            auto old = root;
-            root = std::make_shared<Node>('\0');
-
-            context = std::stack<Node*>();
-            auto cur = root;
-            context.push(cur.get());
-
-            const char* begin = key.data();
-            for (size_t i = 0; i < key.size(); i++) {
-                const char c = *(begin + i);
-                for (int i = 0; i < 256; i++) {
-                    cur->children[i] = old->children[i];
-                }
-                cur->children[c] = std::make_shared<Node>(c);
-                cur = cur->children[c];
-                old = old->children[c];
-
-                if (old->data != boost::none) {
-                    cur->data.emplace(old->data->first, old->data->second);
-                }
-                context.push(cur.get());
-            }
-
-            // For the last node, in case it is not a leaf node and has children.
-            for (int i = 0; i < 256; i++) {
-                cur->children[i] = old->children[i];
-            }
-        }
-
-        Node* node = context.top();
+        Node* last = context.top().first;
+        isUniquelyOwned = context.top().second;
         context.pop();
-        numElems--;
+        if (last->isLeaf()) {
+            // if the node to be deleted is a leaf node, we need to remove nodes from tree
+            // (possibly)
+            while (!context.empty()) {
+                last = context.top().first;
+                isUniquelyOwned = context.top().second;
+                context.pop();
 
-        sizeElems -= node->data->second.size();
-        node->data = boost::none;
+                if ()
+            }
 
-        char tKey;
-        while (!context.empty() && node->isLeaf() && node->data == boost::none) {
-            tKey = node->trieKey;
-            node = context.top();
-            node->children[tKey] = nullptr;
-            context.pop();
+        } else {
+            // similar to the update function but we're removing the value_type
         }
-        return true;
     }
+    // size_type erase(const Key& key) {
+
+    //    std::stack<Node*> context;
+    //    Node* cur = root.get();
+    //    context.push(cur);
+    //    const char* begin = key.data();
+    //    for (size_t i = 0; i < key.size(); i++) {
+    //        const char c = *(begin + i);
+    //        cur = cur->children[c].get();
+    //        if (cur == nullptr)
+    //            return false;
+    //        context.push(cur);
+    //    }
+
+    //    if (root.use_count() > 1) {
+    //        auto old = root;
+    //        root = std::make_shared<Node>('\0');
+
+    //        context = std::stack<Node*>();
+    //        auto cur = root;
+    //        context.push(cur.get());
+
+    //        const char* begin = key.data();
+    //        for (size_t i = 0; i < key.size(); i++) {
+    //            const char c = *(begin + i);
+    //            for (int i = 0; i < 256; i++) {
+    //                cur->children[i] = old->children[i];
+    //            }
+    //            cur->children[c] = std::make_shared<Node>(c);
+    //            cur = cur->children[c];
+    //            old = old->children[c];
+
+    //            if (old->data != boost::none) {
+    //                cur->data.emplace(old->data->first, old->data->second);
+    //            }
+    //            context.push(cur.get());
+    //        }
+
+    //        // For the last node, in case it is not a leaf node and has children.
+    //        for (int i = 0; i < 256; i++) {
+    //            cur->children[i] = old->children[i];
+    //        }
+    //    }
+
+    //    Node* node = context.top();
+    //    context.pop();
+    //    numElems--;
+
+    //    sizeElems -= node->data->second.size();
+    //    node->data = boost::none;
+
+    //    char tKey;
+    //    while (!context.empty() && node->isLeaf() && node->data == boost::none) {
+    //        tKey = node->trieKey;
+    //        node = context.top();
+    //        node->children[tKey] = nullptr;
+    //        context.pop();
+    //    }
+    //    return true;
+    //}
 
     // Returns a Store that has all changes from both 'this' and 'other' compared to base.
     // Throws merge_conflict_exception if there are merge conflicts.
@@ -716,6 +593,7 @@ private:
         }
     };
 
+
     Node* findHelper(const Key& key) const {
         auto cur = root;
         const char* begin = key.data();
@@ -737,22 +615,90 @@ private:
         Key key = value.first;
 
         auto cur = root;
+        std::shared_ptr<Node> parent = nullptr;
         const char* begin = key.data();
-        for (size_t i = 0; i < key.size(); i++) {
-            const char c = *(begin + i);
+        size_t i = 0;
+
+        // The node, if unique, will have two pointers to it, not one. This is because the parent
+        // node holds it as a child node, but now also we have 'cur' pointing to it.
+        while (cur.use_count() - 1 == 1) {
+            if (i >= key.size())
+                break;
+
+            const char c = begin[i];
+
             if (cur->children[c] != nullptr) {
+                parent = cur;
                 cur = cur->children[c];
             } else {
                 cur->children[c] = std::make_shared<Node>(c);
+                parent = cur;
                 cur = cur->children[c];
+            }
+
+            ++i;
+        }
+
+        std::shared_ptr<Node> old;
+
+        if (i == 0) {
+            // if the root is shared to begin with, we want to copy the root.
+            old = root;
+            root = std::make_shared<Node>('\0');
+            cur = root;
+
+        } else if (i < key.size()) {
+            // if there is a shared node in the middle of the tree, we should backtrack and create a
+            // new node that is singly owned by the this tree
+            old = cur;
+            char c = begin[i - 1];
+            parent->children[c] = std::make_shared<Node>(c);
+            cur = parent->children[c];
+
+        } else if (i >= key.size()) {
+            // if everything was uniquely owned, then we don't have to change much, so we can set
+            // 'old' to nullptr so we don't reassign the node's children
+            old = nullptr;
+
+            if (cur.use_count() - 1 > 1) {
+                // This is to account for the special case in which the inserted/updated node (the
+                // last node in our tree traversal) is itself the first non-uniquely owned node. So
+                // we want to copy it and reassign its parents and children.
+                old = cur;
+                char c = begin[i - 1];
+                parent->children[c] = std::make_shared<Node>(c);
+                cur = parent->children[c];
             }
         }
 
+        for (; i < key.size(); i++) {
+            const char c = begin[i];
+
+            if (old != nullptr) {
+                for (int i = 0; i < 256; i++)
+                    cur->children[i] = old->children[i];
+
+                if (old->data != boost::none)
+                    cur->data.emplace(old->data->first, old->data->second);
+
+                old = old->children[c];
+            }
+
+            cur->children[c] = std::make_shared<Node>(c);
+            cur = cur->children[c];
+        }
+
         cur->data.emplace(value.first, value.second);
-        RadixStore::const_iterator it = RadixStore::const_iterator(root, cur.get());
         numElems++;
         sizeElems += value.second.size();
-        return std::pair<RadixStore::const_iterator, bool>(it, true);
+
+        if (old != nullptr) {
+            for (int i = 0; i < 256; i++)
+                cur->children[i] = old->children[i];
+        }
+
+        const_iterator it(root, cur.get());
+        return std::pair<const_iterator, bool>(it, true);
     }
 
     std::shared_ptr<Node> root;
