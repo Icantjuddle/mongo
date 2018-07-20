@@ -296,58 +296,140 @@ public:
 
     std::pair<const_iterator, bool> insert(value_type&& value) {
         Key key = value.first;
+        mapped_type m = value.second;
 
         Node* item = findHelper(key);
         if (item != nullptr || key.size() == 0)
             return std::make_pair(end(), false);
 
-        return insertHelper(std::move(value));
+        auto result = insertHelper(key, std::move(value));
+        if (result.second) {
+            numElems++;
+            sizeElems += m.size();
+        }
+
+        return result;
     }
 
     std::pair<const_iterator, bool> update(value_type&& value) {
         Key key = value.first;
+        mapped_type m = value.second;
 
         // if item does not exist - cannot update
         auto item = RadixStore::find(key);
         if (item == RadixStore::end())
             return std::make_pair(item, false);
 
-        return insertHelper(std::move(value));
+        size_t sizeOfRemovedNode = item->second.size();
+        auto result = insertHelper(key, std::move(value));
+        if (result.second) {
+            sizeElems -= sizeOfRemovedNode;
+            sizeElems += m.size();
+        }
+
+        return result;
     }
 
     size_type erase(const Key& key) {
-        // TODO - have safety checks aka make sure key exists
         std::stack<std::pair<Node*, bool>> context;
 
         std::shared_ptr<Node> cur = root;
         bool isUniquelyOwned = root.use_count() - 1 == 1;
-        context.push(std::make_pair(cur, isUniquelyOwned));
+        context.push(std::make_pair(cur.get(), isUniquelyOwned));
 
         const char* begin = key.data();
         for (size_t i = 0; i < key.size(); i++) {
             const char c = begin[i];
             cur = cur->children[c];
+            if (cur == nullptr)
+                return false;
+
             isUniquelyOwned = isUniquelyOwned && cur.use_count() - 1 == 1;
-            context.push(std::make_pair(cur, isUniquelyOwned));
+            context.push(std::make_pair(cur.get(), isUniquelyOwned));
         }
 
+        size_t sizeOfRemovedNode = cur->data->second.size();
         Node* last = context.top().first;
         isUniquelyOwned = context.top().second;
         context.pop();
         if (last->isLeaf()) {
             // if the node to be deleted is a leaf node, we need to remove nodes from tree
             // (possibly)
+            
+            char trieKey;
             while (!context.empty()) {
+                trieKey = last->trieKey;
                 last = context.top().first;
                 isUniquelyOwned = context.top().second;
                 context.pop();
 
-                if ()
+                // if there's data at this node, we cannot remove it so we stop traversing up
+                if (last->data != boost::none)
+                    break;
+
+                // otherwise we check if the node has other children because that is the other
+                // stopping condition
+                bool hasOtherChildren = false;
+                for (int i=0; i<256; i++) {
+                    if (last->children[i] != nullptr && i != trieKey) {
+                        hasOtherChildren = true;
+                        break;
+                    }
+                }
+
+                if (hasOtherChildren)
+                    break;
             }
 
+            // two possibilities - the node we stopped at is uniquely owned
+            // or it is not uniquely owned
+            //
+            // special case is when we stop at a node which has data (otherwise
+            // we stop because the node has other children so we can't just remove it)
+            
+            if (isUniquelyOwned) {
+                // since node is uniquely owned and 'last' currently points to the parent, 
+                // we can simply set that child to null and "cut" off that branch of our tree
+                last->children[trieKey] = nullptr;
+            } else {
+                // if its not uniquely owned, we have to copy the branch so we can preserve it
+                // for the other owner
+                std::shared_ptr<Node> child = std::make_shared<Node>(last->trieKey);
+                for (int i=0; i < 256; i++) {
+                    if (i == trieKey)
+                        continue;
+
+                    child->children[i] = last->children[i];
+                }
+
+                std::shared_ptr<Node> cur = child;
+                while (!context.empty()) {
+                    trieKey = last->trieKey;
+                    last = context.top().first;
+                    context.pop();
+                    cur = std::make_shared<Node>(last->trieKey);                    
+                    for (int i=0; i < 256; i++) {
+                        cur->children[i] = last->children[i];
+                    }
+
+                    cur->children[trieKey] = child;
+                    child = cur;
+                }
+                root = cur;
+            }
+
+            numElems--;
+            sizeElems -= sizeOfRemovedNode;
+            return true;
         } else {
             // similar to the update function but we're removing the value_type
+            insertHelper(key, boost::none);
+            numElems--;
+            sizeElems -= sizeOfRemovedNode;
+            return true;
         }
+
+        return false;
     }
     // size_type erase(const Key& key) {
 
@@ -611,8 +693,9 @@ private:
         return cur.get();
     }
 
-    std::pair<const_iterator, bool> insertHelper(value_type&& value) {
-        Key key = value.first;
+    //std::pair<const_iterator, bool> insertHelper(value_type&& value) {
+    std::pair<const_iterator, bool> insertHelper(Key key, boost::optional<value_type> value) {
+        //Key key = value.first;
 
         auto cur = root;
         std::shared_ptr<Node> parent = nullptr;
@@ -688,9 +771,15 @@ private:
             cur = cur->children[c];
         }
 
-        cur->data.emplace(value.first, value.second);
-        numElems++;
-        sizeElems += value.second.size();
+        if (value != boost::none) {
+            cur->data.emplace(value->first, value->second);
+            //sizeElems += value->second.size();
+            //numElems++;
+        } else
+            cur->data = boost::none;
+
+        //numElems++;
+        //sizeElems += value.second.size();
 
         if (old != nullptr) {
             for (int i = 0; i < 256; i++)
