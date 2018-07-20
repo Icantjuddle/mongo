@@ -33,8 +33,7 @@
 #include <exception>
 #include <iostream>
 #include <memory>
-#include <stack>
-#include <string>
+#include <vector>
 
 namespace mongo {
 namespace biggie {
@@ -45,6 +44,12 @@ class merge_conflict_exception : std::exception {
     }
 };
 
+/**
+ * RadixStore is a Trie data structure with the ability to share nodes among copies of trees to
+ * minimize data duplication. Each node has a notion of ownership and if modifications are made to
+ * non-uniquely owned nodes, they are copied to prevent dirtying the data for the other owners of
+ * the node.
+ */
 template <class Key, class T>
 class RadixStore {
     class Node;
@@ -61,135 +66,6 @@ public:
     class radix_iterator {
         friend class RadixStore;
 
-        const std::shared_ptr<Node> root;
-        Node* current;
-        bool reverse;
-
-        // constructors
-        radix_iterator() : root(nullptr), current(nullptr), reverse(false) {}
-
-        radix_iterator(const std::shared_ptr<Node>& root, Node* current)
-            : root(root), current(current), reverse(false){};
-
-        radix_iterator(const std::shared_ptr<Node>& root, Node* current, bool rev)
-            : root(root), current(current), reverse(rev){};
-
-        void findNext() {
-            // if current is a nullptr we've finished iterating
-            if (current == nullptr)
-                return;
-
-            // if our current node is not a leaf, we can
-            // continue moving down and left in our tree
-            if (!current->isLeaf()) {
-                traverseLeftSubtree();
-                return;
-            }
-
-            Key key = current->data->first;
-            std::stack<Node*> context;
-            Node* cur = root.get();
-            context.push(cur);
-            const char* begin = key.data();
-            for (size_t i = 0; i < key.size(); i++) {
-                const char c = *(begin + i);
-                cur = cur->children[c].get();
-                // remove this push and the following pop by ensuring you never push a leaf node
-                // onto the stack
-                context.push(cur);
-            }
-
-            // need to go back up
-            Node* it = context.top();
-            context.pop();
-            current = nullptr;
-            while (!context.empty()) {
-                char oldKey = it->trieKey;
-                it = context.top();
-                context.pop();
-
-                // explore the next branches
-                for (int i = oldKey + 1; i < 256; i++) {
-                    if (it->children[i] != nullptr) {
-
-                        if (it->children[i]->data != boost::none) {
-                            current = it->children[i].get();
-                            return;
-                        }
-                        current = it->children[i].get();
-                        traverseLeftSubtree();
-                        return;
-                    }
-                }
-            }
-            return;
-        }
-
-        void findNextReverse() {
-            // if current is a nullptr we've finished iterating
-            if (current == nullptr)
-                return;
-
-            Key key = current->data->first;
-            std::stack<Node*> context;
-            Node* cur = root.get();
-            context.push(cur);
-
-            const char* begin = key.data();
-            for (size_t i = 0; i < key.size(); i++) {
-                const char c = *(begin + i);
-                cur = cur->children[c].get();
-                context.push(cur);
-            }
-
-            // need to go back up
-            Node* it = context.top();
-            context.pop();
-            char oldKey;
-            current = nullptr;
-            while (!context.empty()) {
-                oldKey = it->trieKey;
-                it = context.top();
-                context.pop();
-                // explore the next branches
-                for (int i = oldKey - 1; i >= 0; i--) {
-                    if (it->children[i] != nullptr) {
-                        current = it->children[i].get();
-                        traverseRightSubtree();
-                        return;
-                    }
-                }
-
-                if (it->data != boost::none) {
-                    current = it;
-                    return;
-                }
-            }
-        }
-
-        void traverseLeftSubtree() {
-            // want to do at least one iteration
-            do {
-                for (int i = 0; i < 256; i++) {
-                    if (current->children[i] != nullptr) {
-                        current = current->children[i].get();
-                        break;
-                    }
-                }
-            } while (current->data == boost::none);
-        }
-
-        void traverseRightSubtree() {
-            do {
-                for (int i = 255; i >= 0; i--) {
-                    if (current->children[i] != nullptr) {
-                        current = current->children[i].get();
-                        break;
-                    }
-                }
-            } while (current->data == boost::none);
-        }
-
     public:
         using iterator_category = std::forward_iterator_tag;
         using value_type = RadixStore::value_type;
@@ -197,59 +73,295 @@ public:
         using pointer = pointer_type;
         using reference = reference_type;
 
+        radix_iterator(const radix_iterator& other)
+            : _root(other._root), _current(other._current) {}
+
         ~radix_iterator() = default;
 
         radix_iterator& operator++() {
-            if (reverse)
-                findNextReverse();
-            else
-                findNext();
-
+            _findNext();
             return *this;
         }
 
         radix_iterator operator++(int) {
             radix_iterator old = *this;
-            if (reverse)
-                findNextReverse();
-            else
-                findNext();
-
+            ++*this;
             return old;
         }
 
+        radix_iterator& operator=(const radix_iterator& other) {
+            if (this != &other) {
+                _root = other._root;
+                _current = other._current;
+            }
+            return *this;
+        }
+
         bool operator==(const radix_iterator& other) const {
-            return this->current == other.current;
+            return this->_current == other._current;
         }
 
         bool operator!=(const radix_iterator& other) const {
-            return this->current != other.current;
+            return this->_current != other._current;
         }
 
         reference operator*() const {
-            return *(current->data);
+            return *(_current->data);
         }
 
         const_pointer operator->() {
-            return &*(current->data);
+            return &*(_current->data);
         }
+
+    private:
+        radix_iterator(const std::shared_ptr<Node>& root) : _root(root), _current(nullptr) {}
+
+        radix_iterator(const std::shared_ptr<Node>& root, Node* current)
+            : _root(root), _current(current){};
+
+        /**
+        * This function traverses the tree to find the next left-most node with data. Modifies
+        * '_current' to point to this node. It uses a pre-order traversal ('visit' the current
+        * node itself then 'visit' the child subtrees from left to right ).
+        */
+        void _findNext() {
+            // If 'current' is a nullptr there is no next node to go to.
+            if (_current == nullptr)
+                return;
+
+            // If 'current' is not a leaf, continue moving down and left in the tree until the next
+            // node.
+            if (!_current->isLeaf()) {
+                _traverseLeftSubtree();
+                return;
+            }
+
+            // Get path from root to '_current' since it is required to traverse up the tree.
+            Key key = _current->data->first;
+            std::vector<Node*> context = RadixStore::_buildContext(key, _root.get());
+
+            // 'node' should equal '_current' because that should be the last element in the stack.
+            // Pop back once more to get access to it's parent node. The parent node will enable
+            // traversal through the neighboring nodes, and if there are none, the iterator will
+            // move up the tree to continue searching for the next node with data.
+            Node* node = context.back();
+            context.pop_back();
+
+            // In case there is no next node, set _current to be 'nullptr' which will mark the end
+            // of the traversal.
+            _current = nullptr;
+            while (!context.empty()) {
+                char oldKey = node->trieKey;
+                node = context.back();
+                context.pop_back();
+
+                // Check the children right of the node that the iterator was at already. This way,
+                // there will be no backtracking in the traversal.
+                for (auto iter = oldKey + 1 + node->children.begin(); iter != node->children.end();
+                     ++iter) {
+
+                    // If the node has a child, then the sub-tree must have a node with data that
+                    // has not yet been visited.
+                    if (*iter != nullptr) {
+
+                        // If the current node has data, return it and exit. If not, continue
+                        // following the nodes to find the next one with data. It is necessary to go
+                        // to the left-most node in this sub-tree.
+                        if ((*iter)->data != boost::none) {
+                            _current = iter->get();
+                            return;
+                        }
+                        _current = iter->get();
+                        _traverseLeftSubtree();
+                        return;
+                    }
+                }
+            }
+            return;
+        }
+
+        void _traverseLeftSubtree() {
+            // This function finds the next left-most node with data under the sub-tree where
+            // '_current' is root. However, it cannot return the root, and hence at least 1
+            // iteration of the while loop is required.
+            do {
+                for (auto child : _current->children) {
+                    if (child != nullptr) {
+                        _current = child.get();
+                        break;
+                    }
+                }
+            } while (_current->data == boost::none);
+        }
+
+        // "_root" is a copy of the root of the tree over which this is iterating.
+        const std::shared_ptr<Node> _root;
+
+        // "_current" is the node that the iterator is currently on. _current->data will never be
+        // boost::none (unless it is within the process of tree traversal), and _current will be
+        // become a nullptr once there are no more nodes left to iterate.
+        Node* _current;
     };
 
     using iterator = radix_iterator<pointer, value_type&>;
     using const_iterator = radix_iterator<const_pointer, const value_type&>;
 
-    // Constructors
+    template <class pointer_type, class reference_type>
+    class reverse_radix_iterator {
+        friend class RadixStore;
+        friend class radix_iterator<pointer_type, reference_type&>;
+
+    public:
+        using value_type = RadixStore::value_type;
+        using difference_type = std::ptrdiff_t;
+        using pointer = pointer_type;
+        using reference = reference_type;
+
+        reverse_radix_iterator(const const_iterator& it) : _root(it._root), _current(it._current) {
+            // If the iterator passed in is at the end(), then set _current to root which is
+            // equivalent to rbegin(). Otherwise, move the iterator back one node, due to the fact
+            // that the relationship &*r == &*(i-1) must be maintained for any reverse iterator 'r'
+            // and forward iterator 'i'.
+            if (_current == nullptr) {
+                _current = _root.get();
+                _traverseRightSubtree();
+            } else {
+                _findNextReverse();
+            }
+        }
+
+        reverse_radix_iterator(const iterator& it) : _root(it._root), _current(it._current) {
+            if (_current == nullptr) {
+                _current = _root.get();
+                _traverseRightSubtree();
+            } else {
+                _findNextReverse();
+            }
+        }
+
+        reverse_radix_iterator(const reverse_radix_iterator& other)
+            : _root(other._root), _current(other._current) {}
+
+        reverse_radix_iterator& operator=(const reverse_radix_iterator& other) = default;
+
+        ~reverse_radix_iterator() = default;
+
+        reverse_radix_iterator& operator++() {
+            _findNextReverse();
+            return *this;
+        }
+
+        reverse_radix_iterator operator++(int) {
+            reverse_radix_iterator old = *this;
+            ++*this;
+            return old;
+        }
+
+        bool operator==(const reverse_radix_iterator& other) const {
+            return this->_current == other._current;
+        }
+
+        bool operator!=(const reverse_radix_iterator& other) const {
+            return this->_current != other._current;
+        }
+
+        reference operator*() const {
+            return *(_current->data);
+        }
+
+        const_pointer operator->() {
+            return &*(_current->data);
+        }
+
+
+    private:
+        reverse_radix_iterator(const std::shared_ptr<Node>& root)
+            : _root(root), _current(nullptr) {}
+        reverse_radix_iterator(const std::shared_ptr<Node>& root, Node* current)
+            : _root(root), _current(current) {}
+
+        void _findNextReverse() {
+            // Reverse find iterates through the tree to find the "next" node containing data,
+            // searching from right to left. Normally a pre-order traversal is used, but for
+            // reverse, the ordering is to visit child nodes from right to left, then 'visit'
+            // current node.
+            if (_current == nullptr)
+                return;
+
+            Key key = _current->data->first;
+
+            std::vector<Node*> context = RadixStore::_buildContext(key, _root.get());
+            Node* node = context.back();
+            context.pop_back();
+
+            // Due to the nature of the traversal, it will always be necessary to move up the tree
+            // first because when the 'current' node was visited, it meant all its children had been
+            // visited as well.
+            char oldKey;
+            _current = nullptr;
+            while (!context.empty()) {
+                oldKey = node->trieKey;
+                node = context.back();
+                context.pop_back();
+
+                // After moving up in the tree, continue searching for neighboring nodes to see if
+                // they have data, moving from right to left.
+                for (int i = oldKey - 1; i >= 0; i--) {
+                    if (node->children[i] != nullptr) {
+                        // If there is a sub-tree found, it must have data, therefore it's necessary
+                        // to traverse to the right most node.
+                        _current = node->children[i].get();
+                        _traverseRightSubtree();
+                        return;
+                    }
+                }
+
+                // If there were no sub-trees that contained data, and the 'current' node has data,
+                // it can now finally be 'visited'.
+                if (node->data != boost::none) {
+                    _current = node;
+                    return;
+                }
+            }
+        }
+
+        void _traverseRightSubtree() {
+            // This function traverses the given tree to the right most leaf of the subtree where
+            // 'current' is the root.
+            do {
+                for (auto iter = _current->children.rbegin(); iter != _current->children.rend();
+                     ++iter) {
+                    if (*iter != nullptr) {
+                        _current = iter->get();
+                        break;
+                    }
+                }
+            } while (!_current->isLeaf());
+        }
+
+        // "_root" is a copy of the root of the tree over which this is iterating.
+        std::shared_ptr<Node> _root;
+
+        // "_current" is a the node that the iterator is currently on. _current->data will never be
+        // boost::none, and _current will be become a nullptr once there are no more nodes left to
+        // iterate.
+        Node* _current;
+    };
+
+    using reverse_iterator = reverse_radix_iterator<pointer, value_type&>;
+    using const_reverse_iterator = reverse_radix_iterator<const_pointer, const value_type&>;
+
+    // Constructor
     RadixStore(const RadixStore& other) {
-        // INCORRECT - no need to recreate the tree
-        root = other.root;
-        numElems = other.numElems;
-        sizeElems = other.sizeElems;
+        _root = other._root;
+        _numElems = other._numElems;
+        _sizeElems = other._sizeElems;
     }
 
     RadixStore() {
-        root = std::make_shared<RadixStore::Node>('\0');
-        numElems = 0;
-        sizeElems = 0;
+        _root = std::make_shared<RadixStore::Node>('\0');
+        _numElems = 0;
+        _sizeElems = 0;
     }
 
     ~RadixStore() = default;
@@ -268,44 +380,41 @@ public:
             other_iter++;
         }
 
-        if (other_iter != other.end())
-            return false;
-
-        return true;
+        return other_iter == other.end();
     }
 
     // Capacity
     bool empty() const {
-        return numElems == 0;
+        return _numElems == 0;
     }
 
     size_type size() const {
-        return numElems;
+        return _numElems;
     }
 
     size_type dataSize() const {
-        return sizeElems;
+        return _sizeElems;
     }
 
     // Modifiers
     void clear() noexcept {
-        root = std::make_shared<Node>('\0');
-        numElems = 0;
-        sizeElems = 0;
+        _root = std::make_shared<Node>('\0');
+        _numElems = 0;
+        _sizeElems = 0;
     }
 
     std::pair<const_iterator, bool> insert(value_type&& value) {
         Key key = value.first;
         mapped_type m = value.second;
 
-        Node* item = findHelper(key);
+        Node* item = _findNode(key);
         if (item != nullptr || key.size() == 0)
             return std::make_pair(end(), false);
 
-        auto result = insertHelper(key, std::move(value));
+        auto result = _upsertWithCopyOnSharedNodes(key, std::move(value));
         if (result.second) {
-            numElems++;
-            sizeElems += m.size();
+            _numElems++;
+            _sizeElems += m.size();
         }
 
         return result;
@@ -315,63 +424,59 @@ public:
         Key key = value.first;
         mapped_type m = value.second;
 
-        // if item does not exist - cannot update
+        // Ensure that the item to be updated exists.
         auto item = RadixStore::find(key);
         if (item == RadixStore::end())
             return std::make_pair(item, false);
 
         size_t sizeOfRemovedNode = item->second.size();
-        auto result = insertHelper(key, std::move(value));
+        auto result = _upsertWithCopyOnSharedNodes(key, std::move(value));
         if (result.second) {
-            sizeElems -= sizeOfRemovedNode;
-            sizeElems += m.size();
+            _sizeElems -= sizeOfRemovedNode;
+            _sizeElems += m.size();
         }
 
         return result;
     }
 
     size_type erase(const Key& key) {
-        std::stack<std::pair<Node*, bool>> context;
+        std::vector<std::pair<Node*, bool>> context;
 
-        std::shared_ptr<Node> cur = root;
-        bool isUniquelyOwned = root.use_count() - 1 == 1;
-        context.push(std::make_pair(cur.get(), isUniquelyOwned));
+        std::shared_ptr<Node> node = _root;
+        bool isUniquelyOwned = _root.use_count() - 1 == 1;
+        context.push_back(std::make_pair(node.get(), isUniquelyOwned));
 
-        const char* begin = key.data();
-        for (size_t i = 0; i < key.size(); i++) {
-            const char c = begin[i];
-            cur = cur->children[c];
-            if (cur == nullptr)
+        for (const char* it = key.data(); it != key.data() + key.size(); ++it) {
+            node = node->children[*it];
+            if (node == nullptr)
                 return false;
 
-            isUniquelyOwned = isUniquelyOwned && cur.use_count() - 1 == 1;
-            context.push(std::make_pair(cur.get(), isUniquelyOwned));
+            isUniquelyOwned = isUniquelyOwned && node.use_count() - 1 == 1;
+            context.push_back(std::make_pair(node.get(), isUniquelyOwned));
         }
 
-        size_t sizeOfRemovedNode = cur->data->second.size();
-        Node* last = context.top().first;
-        isUniquelyOwned = context.top().second;
-        context.pop();
+        size_t sizeOfRemovedNode = node->data->second.size();
+        Node* last = context.back().first;
+        isUniquelyOwned = context.back().second;
+        context.pop_back();
         if (last->isLeaf()) {
-            // if the node to be deleted is a leaf node, we need to remove nodes from tree
-            // (possibly)
-            
+            // If the node to be deleted is a leaf node, might need to prune the branch.
             char trieKey;
             while (!context.empty()) {
                 trieKey = last->trieKey;
-                last = context.top().first;
-                isUniquelyOwned = context.top().second;
-                context.pop();
+                last = context.back().first;
+                isUniquelyOwned = context.back().second;
+                context.pop_back();
 
-                // if there's data at this node, we cannot remove it so we stop traversing up
+                // If a node on the branch has data, stop pruning.
                 if (last->data != boost::none)
                     break;
 
-                // otherwise we check if the node has other children because that is the other
-                // stopping condition
+                // If a node has children other than the one leading to the to-be deleted node, stop
+                // pruning.
                 bool hasOtherChildren = false;
-                for (int i=0; i<256; i++) {
-                    if (last->children[i] != nullptr && i != trieKey) {
+                for (auto iter = last->children.begin(); iter != last->children.end(); ++iter) {
+                    if (*iter != nullptr && (*iter)->trieKey != trieKey) {
                         hasOtherChildren = true;
                         break;
                     }
@@ -381,116 +486,51 @@ public:
                     break;
             }
 
-            // two possibilities - the node we stopped at is uniquely owned
-            // or it is not uniquely owned
-            //
-            // special case is when we stop at a node which has data (otherwise
-            // we stop because the node has other children so we can't just remove it)
-            
             if (isUniquelyOwned) {
-                // since node is uniquely owned and 'last' currently points to the parent, 
-                // we can simply set that child to null and "cut" off that branch of our tree
+                // If this node is uniquely owned, simply set that child node to null and
+                // "cut" off that branch of our tree
                 last->children[trieKey] = nullptr;
             } else {
-                // if its not uniquely owned, we have to copy the branch so we can preserve it
-                // for the other owner
+                // If its not uniquely owned, copy the branch so we can preserve it for the other
+                // owner(s).
                 std::shared_ptr<Node> child = std::make_shared<Node>(last->trieKey);
-                for (int i=0; i < 256; i++) {
-                    if (i == trieKey)
+                auto lastIter = last->children.begin();
+                for (auto iter = child->children.begin(); iter != child->children.end();
+                     ++iter, ++lastIter) {
+                    if (*lastIter != nullptr && (*lastIter)->trieKey == trieKey)
                         continue;
 
-                    child->children[i] = last->children[i];
+                    *iter = *lastIter;
                 }
 
-                std::shared_ptr<Node> cur = child;
+                std::shared_ptr<Node> node = child;
                 while (!context.empty()) {
                     trieKey = last->trieKey;
-                    last = context.top().first;
-                    context.pop();
-                    cur = std::make_shared<Node>(last->trieKey);                    
-                    for (int i=0; i < 256; i++) {
-                        cur->children[i] = last->children[i];
+                    last = context.back().first;
+                    context.pop_back();
+                    node = std::make_shared<Node>(last->trieKey);
+
+                    auto lastIter = last->children.begin();
+                    for (auto iter = node->children.begin(); iter != node->children.end();
+                         ++iter, ++lastIter) {
+                        *iter = *lastIter;
                     }
 
-                    cur->children[trieKey] = child;
-                    child = cur;
+                    node->children[trieKey] = child;
+                    child = node;
                 }
-                root = cur;
+                _root = node;
             }
-
-            numElems--;
-            sizeElems -= sizeOfRemovedNode;
-            return true;
         } else {
-            // similar to the update function but we're removing the value_type
-            insertHelper(key, boost::none);
-            numElems--;
-            sizeElems -= sizeOfRemovedNode;
-            return true;
+            // The to-be deleted node is an internal node, and therefore updating its data to be
+            // boost::none will "delete" it
+            _upsertWithCopyOnSharedNodes(key, boost::none);
         }
 
-        return false;
+        _numElems--;
+        _sizeElems -= sizeOfRemovedNode;
+        return true;
     }
-    // size_type erase(const Key& key) {
-
-    //    std::stack<Node*> context;
-    //    Node* cur = root.get();
-    //    context.push(cur);
-    //    const char* begin = key.data();
-    //    for (size_t i = 0; i < key.size(); i++) {
-    //        const char c = *(begin + i);
-    //        cur = cur->children[c].get();
-    //        if (cur == nullptr)
-    //            return false;
-    //        context.push(cur);
-    //    }
-
-    //    if (root.use_count() > 1) {
-    //        auto old = root;
-    //        root = std::make_shared<Node>('\0');
-
-    //        context = std::stack<Node*>();
-    //        auto cur = root;
-    //        context.push(cur.get());
-
-    //        const char* begin = key.data();
-    //        for (size_t i = 0; i < key.size(); i++) {
-    //            const char c = *(begin + i);
-    //            for (int i = 0; i < 256; i++) {
-    //                cur->children[i] = old->children[i];
-    //            }
-    //            cur->children[c] = std::make_shared<Node>(c);
-    //            cur = cur->children[c];
-    //            old = old->children[c];
-
-    //            if (old->data != boost::none) {
-    //                cur->data.emplace(old->data->first, old->data->second);
-    //            }
-    //            context.push(cur.get());
-    //        }
-
-    //        // For the last node, in case it is not a leaf node and has children.
-    //        for (int i = 0; i < 256; i++) {
-    //            cur->children[i] = old->children[i];
-    //        }
-    //    }
-
-    //    Node* node = context.top();
-    //    context.pop();
-    //    numElems--;
-
-    //    sizeElems -= node->data->second.size();
-    //    node->data = boost::none;
-
-    //    char tKey;
-    //    while (!context.empty() && node->isLeaf() && node->data == boost::none) {
-    //        tKey = node->trieKey;
-    //        node = context.top();
-    //        node->children[tKey] = nullptr;
-    //        context.pop();
-    //    }
-    //    return true;
-    //}
 
     // Returns a Store that has all changes from both 'this' and 'other' compared to base.
     // Throws merge_conflict_exception if there are merge conflicts.
@@ -499,7 +539,6 @@ public:
 
         // Merges all differences between this and base, along with modifications from other.
         RadixStore::const_iterator iter = this->begin();
-        // for (; iter != this->end(); iter++) {
         while (iter != this->end()) {
             const value_type val = *iter;
             RadixStore::const_iterator baseIter = base.find(val.first);
@@ -557,77 +596,54 @@ public:
 
     // iterators
     const_iterator begin() const noexcept {
-        if (numElems == 0) {
+        if (_numElems == 0) {
             return RadixStore::end();
         }
 
-        auto cur = root;
-        while (cur->data == boost::none) {
-            for (int i = 0; i < 256; i++) {
-                if (cur->children[i] != nullptr) {
-                    cur = cur->children[i];
+        auto node = _root;
+        while (node->data == boost::none) {
+            for (auto child : node->children) {
+                if (child != nullptr) {
+                    node = child;
                     break;
                 }
             }
         }
-        return RadixStore::const_iterator(root, cur.get());
+        return RadixStore::const_iterator(_root, node.get());
     }
 
-    const_iterator rbegin() const noexcept {
-        if (numElems == 0)
+    const_reverse_iterator rbegin() const noexcept {
+        if (_numElems == 0)
             return RadixStore::rend();
 
-        auto cur = root;
-        while (!cur->isLeaf()) {
-            for (int i = 255; i >= 0; i--) {
-                if (cur->children[i] != nullptr) {
-                    cur = cur->children[i];
+        auto node = _root;
+        while (!node->isLeaf()) {
+            for (auto iter = node->children.rbegin(); iter != node->children.rend(); ++iter) {
+                if (*iter != nullptr) {
+                    node = *iter;
                     break;
                 }
             }
         }
-        return RadixStore::const_iterator(root, cur.get(), true);
+        return RadixStore::const_reverse_iterator(_root, node.get());
     }
 
     const_iterator end() const noexcept {
-        return RadixStore::const_iterator();
+        return RadixStore::const_iterator(_root);
     }
 
-    const_iterator rend() const noexcept {
-        return RadixStore::const_iterator();
+    const_reverse_iterator rend() const noexcept {
+        return RadixStore::const_reverse_iterator(_root);
     }
-
-    // iterator begin() const noexcept;
-    // iterator rbegin() const noexcept;
-    // iterator end() const noexcept;
-    // iterator rend() const noexcept;
-
-    // iterator find(const Key& key);
 
     const_iterator find(const Key& key) const {
         RadixStore::const_iterator it = RadixStore::end();
 
-        Node* cur = findHelper(key);
-        if (cur == nullptr)
+        Node* node = _findNode(key);
+        if (node == nullptr)
             return it;
         else
-            return RadixStore::const_iterator(root, cur);
-    }
-
-    const_iterator rlower_bound(const Key& key) const {
-        const_iterator it = find(key);
-        it.reverse = true;
-        return it;
-    }
-
-    const_iterator rupper_bound(const Key& key) const {
-        const_iterator it = find(key);
-        it.reverse = true;
-        if (it == rend())
-            return it;
-
-        it++;
-        return it;
+            return RadixStore::const_iterator(_root, node);
     }
 
     const_iterator lower_bound(const Key& key) const {
@@ -654,145 +670,171 @@ public:
 
 private:
     class Node {
-    private:
         friend class RadixStore;
 
     public:
-        char trieKey;
-        boost::optional<value_type> data;
-        std::array<std::shared_ptr<Node>, 256> children;
-
         Node(char key) : trieKey(key) {
             children.fill(nullptr);
         }
 
         bool isLeaf() {
-            for (int i = 0; i < 256; i++) {
-                if (children[i] != nullptr)
+            for (auto child : children) {
+                if (child != nullptr)
                     return false;
             }
             return true;
         }
+
+        char trieKey;
+        boost::optional<value_type> data;
+        std::array<std::shared_ptr<Node>, 256> children;
     };
 
 
-    Node* findHelper(const Key& key) const {
-        auto cur = root;
-        const char* begin = key.data();
-        for (size_t i = 0; i < key.size(); i++) {
-            const char c = *(begin + i);
-            if (cur->children[c] != nullptr)
-                cur = cur->children[c];
+    Node* _findNode(const Key& key) const {
+        auto node = _root;
+        for (const char* it = key.data(); it != key.data() + key.size(); ++it) {
+            if (node->children[*it] != nullptr)
+                node = node->children[*it];
             else
                 return nullptr;
         }
 
-        if (cur->data == boost::none)
+        if (node->data == boost::none)
             return nullptr;
 
-        return cur.get();
+        return node.get();
     }
 
-    //std::pair<const_iterator, bool> insertHelper(value_type&& value) {
-    std::pair<const_iterator, bool> insertHelper(Key key, boost::optional<value_type> value) {
-        //Key key = value.first;
+    /**
+     * _upsertWithCopyOnSharedNodes is a helper function to help manage copy on modification for the
+     * tree. This function follows the path for the to-be modified node using the keystring. If at
+     * any point, the path is no longer uniquely owned, the following nodes are copied to prevent
+     * modification to other owner's data.
+     *
+     * 'key' is the key which can be followed to find the data.
+     * 'value' is the data to be inserted or updated. It can be an empty value in which case it is
+     * equivalent to removing that data from the tree.
+     */
+    std::pair<const_iterator, bool> _upsertWithCopyOnSharedNodes(
+        Key key, boost::optional<value_type> value) {
 
-        auto cur = root;
+        auto node = _root;
         std::shared_ptr<Node> parent = nullptr;
-        const char* begin = key.data();
+        const char* keyString = key.data();
         size_t i = 0;
 
-        // The node, if unique, will have two pointers to it, not one. This is because the parent
-        // node holds it as a child node, but now also we have 'cur' pointing to it.
-        while (cur.use_count() - 1 == 1) {
-            if (i >= key.size())
+        // Follow the path in the tree as defined by the key string until a non-uniquely owned node.
+        // This loop would exit at the root if the root itself was shared, or exit at the end in the
+        // event the entire path was uniquely owned.
+        for (; i < key.size(); i++) {
+
+            // The current node in the traversal, if unique, will always have two pointers to it,
+            // not one. This is because the parent node holds it as a child node, but now also we
+            // have 'node' pointing to it. The loop will exit if the tree node is no longer uniquely
+            // owned.
+            if (node.use_count() > 2)
                 break;
 
-            const char c = begin[i];
+            const char c = keyString[i];
 
-            if (cur->children[c] != nullptr) {
-                parent = cur;
-                cur = cur->children[c];
+            if (node->children[c] != nullptr) {
+                parent = node;
+                node = node->children[c];
             } else {
-                cur->children[c] = std::make_shared<Node>(c);
-                parent = cur;
-                cur = cur->children[c];
+                node->children[c] = std::make_shared<Node>(c);
+                parent = node;
+                node = node->children[c];
             }
-
-            ++i;
         }
 
         std::shared_ptr<Node> old;
 
         if (i == 0) {
-            // if the root is shared to begin with, we want to copy the root.
-            old = root;
-            root = std::make_shared<Node>('\0');
-            cur = root;
+            // If the _root node is shared to begin with, copy the _root. This is necessary since
+            // '_root' is a member variable and must be updated if changed, unlike other inner nodes
+            // of the tree.
+            old = _root;
+            _root = std::make_shared<Node>('\0');
+            node = _root;
 
         } else if (i < key.size()) {
-            // if there is a shared node in the middle of the tree, we should backtrack and create a
-            // new node that is singly owned by the this tree
-            old = cur;
-            char c = begin[i - 1];
+            // If there is a shared node in the middle of the tree, backtrack and create a new node
+            // that is singly owned by this tree. It is necessary to copy all following nodes as
+            // well.
+            old = node;
+            char c = keyString[i - 1];
             parent->children[c] = std::make_shared<Node>(c);
-            cur = parent->children[c];
+            node = parent->children[c];
 
         } else if (i >= key.size()) {
-            // if everything was uniquely owned, then we don't have to change much, so we can set
-            // 'old' to nullptr so we don't reassign the node's children
+            // If all nodes prior to the last node in the traversal are uniquely owned, then set
+            // 'old' to nullptr to prevent reassigning the node's children.
             old = nullptr;
 
-            if (cur.use_count() - 1 > 1) {
-                // This is to account for the special case in which the inserted/updated node (the
-                // last node in our tree traversal) is itself the first non-uniquely owned node. So
-                // we want to copy it and reassign its parents and children.
-                old = cur;
-                char c = begin[i - 1];
+            if (node.use_count() > 2) {
+                // In the special case in which the to-be modified node (the last node in our
+                // traversal) is itself the first non-uniquely owned node - copy it and reassign its
+                // parents and children.
+                old = node;
+                char c = keyString[i - 1];
                 parent->children[c] = std::make_shared<Node>(c);
-                cur = parent->children[c];
+                node = parent->children[c];
             }
         }
 
         for (; i < key.size(); i++) {
-            const char c = begin[i];
+            const char c = keyString[i];
 
             if (old != nullptr) {
-                for (int i = 0; i < 256; i++)
-                    cur->children[i] = old->children[i];
+                node->children = old->children;
 
                 if (old->data != boost::none)
-                    cur->data.emplace(old->data->first, old->data->second);
+                    node->data.emplace(old->data->first, old->data->second);
 
                 old = old->children[c];
             }
 
-            cur->children[c] = std::make_shared<Node>(c);
-            cur = cur->children[c];
+            node->children[c] = std::make_shared<Node>(c);
+            node = node->children[c];
         }
 
         if (value != boost::none) {
-            cur->data.emplace(value->first, value->second);
-            //sizeElems += value->second.size();
-            //numElems++;
-        } else
-            cur->data = boost::none;
-
-        //numElems++;
-        //sizeElems += value.second.size();
-
-        if (old != nullptr) {
-            for (int i = 0; i < 256; i++)
-                cur->children[i] = old->children[i];
+            node->data.emplace(value->first, value->second);
+        } else {
+            node->data = boost::none;
         }
 
-        const_iterator it(root, cur.get());
+        // If 'old' isn't a nullptr, add the children since the modified node need not be a leaf in
+        // the tree. Will only have to do this if the modified node was not uniquely owned, and a
+        // copy was created.
+        if (old != nullptr) {
+            node->children = old->children;
+        }
+
+        const_iterator it(_root, node.get());
         return std::pair<const_iterator, bool>(it, true);
     }
 
-    std::shared_ptr<Node> root;
-    size_type numElems;
-    size_type sizeElems;
+    /**
+    * This function traverses the tree starting at the provided node using the provided the
+    * key. It returns the stack which is used in tree traversals for both the forward and
+    * reverse iterators. Since both iterator classes use this function, it is declared
+    * statically under RadixStore.
+    */
+    static std::vector<Node*> _buildContext(Key key, Node* node) {
+        std::vector<Node*> context;
+        context.push_back(node);
+        for (const char* it = key.data(); it != key.data() + key.size(); ++it) {
+            node = node->children[*it].get();
+            context.push_back(node);
+        }
+        return context;
+    }
+
+    std::shared_ptr<Node> _root;
+    size_type _numElems;
+    size_type _sizeElems;
 };
 
 }  // namespace biggie

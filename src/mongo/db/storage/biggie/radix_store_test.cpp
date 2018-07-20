@@ -49,35 +49,32 @@ protected:
     StringStore expected;
 };
 
-TEST_F(RadixStoreTest, InsertTest) {
-    value_type value1 = std::make_pair("1", "foo");
-    std::pair<StringStore::const_iterator, bool> res = thisStore.insert(value_type(value1));
-    ASSERT_TRUE(res.second);
-    ASSERT_TRUE(*res.first == value1);
-}
-
-TEST_F(RadixStoreTest, InsertTest2) {
+TEST_F(RadixStoreTest, SimpleInsertTest) {
     value_type value1 = std::make_pair("food", "1");
     value_type value2 = std::make_pair("foo", "2");
     value_type value3 = std::make_pair("bar", "2");
 
-    thisStore.insert(value_type(value1));
-    std::pair<StringStore::const_iterator, bool> res = thisStore.insert(value_type(value2));
-
-    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
+    std::pair<StringStore::const_iterator, bool> res = thisStore.insert(value_type(value1));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(1));
     ASSERT_TRUE(res.second);
     ASSERT_TRUE(*res.first == value2);
 
-    std::pair<StringStore::const_iterator, bool> res2 = thisStore.insert(value_type(value3));
-    ASSERT_EQ(thisStore.size(), StringStore::size_type(3));
+    std::pair<StringStore::const_iterator, bool> res2 = thisStore.insert(value_type(value2));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
     ASSERT_TRUE(res2.second);
+    ASSERT_TRUE(*res2.first == value2);
+
+    std::pair<StringStore::const_iterator, bool> res3 = thisStore.insert(value_type(value3));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(3));
+    ASSERT_TRUE(res3.second);
+    ASSERT_TRUE(*res3.first == value3);
 }
 
-TEST_F(RadixStoreTest, InsertTest3) {
+TEST_F(RadixStoreTest, InsertInCopyFromRootTest) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
     value_type value3 = std::make_pair("fee", "3");
-    value_type value4 = std::make_pair("fed", "5");
+    value_type value4 = std::make_pair("fed", "4");
 
     thisStore.insert(value_type(value1));
     thisStore.insert(value_type(value2));
@@ -121,7 +118,7 @@ TEST_F(RadixStoreTest, InsertTest3) {
     ASSERT_TRUE(check_other == otherStore.end());
 }
 
-TEST_F(RadixStoreTest, InsertTest4) {
+TEST_F(RadixStoreTest, InsertTwiceInCopyTest) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
     value_type value3 = std::make_pair("fee", "3");
@@ -170,7 +167,7 @@ TEST_F(RadixStoreTest, InsertTest4) {
     ASSERT_TRUE(check_other == otherStore.end());
 }
 
-TEST_F(RadixStoreTest, InsertTest5) {
+TEST_F(RadixStoreTest, InsertInBranchWithSharedChildrenTest) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
     value_type value3 = std::make_pair("fee", "3");
@@ -220,7 +217,7 @@ TEST_F(RadixStoreTest, InsertTest5) {
     ASSERT_TRUE(check_other == otherStore.end());
 }
 
-TEST_F(RadixStoreTest, InsertTest6) {
+TEST_F(RadixStoreTest, InsertNonLeafNodeInBranchWithSharedChildrenTest) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
     value_type value3 = std::make_pair("feed", "3");
@@ -323,7 +320,7 @@ TEST_F(RadixStoreTest, UpdateTest) {
     ASSERT_TRUE(it2 == thisStore.end());
 }
 
-TEST_F(RadixStoreTest, UpdateTest2) {
+TEST_F(RadixStoreTest, UpdateLeafOnSharedNodeTest) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("bar", "2");
     value_type value3 = std::make_pair("fool", "3");
@@ -363,7 +360,7 @@ TEST_F(RadixStoreTest, UpdateTest2) {
     ASSERT_TRUE(it2 == thisStore.end());
 }
 
-TEST_F(RadixStoreTest, UpdateTest3) {
+TEST_F(RadixStoreTest, UpdateSharedBranchNonLeafNodeTest) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
     value_type value3 = std::make_pair("fee", "3");
@@ -420,7 +417,7 @@ TEST_F(RadixStoreTest, UpdateTest3) {
     ASSERT_TRUE(check_other == otherStore.end());
 }
 
-TEST_F(RadixStoreTest, EraseTest) {
+TEST_F(RadixStoreTest, SimpleEraseTest) {
     value_type value1 = std::make_pair("abc", "1");
     value_type value2 = std::make_pair("def", "4");
     value_type value3 = std::make_pair("ghi", "5");
@@ -444,28 +441,20 @@ TEST_F(RadixStoreTest, EraseTest) {
     ASSERT_FALSE(thisStore.erase("jkl"));
 }
 
-TEST_F(RadixStoreTest, EraseTest2) {
+TEST_F(RadixStoreTest, EraseNodeWithUniquelyOwnedParent) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
-    //value_type value3 = std::make_pair("fee", "3");
-    value_type value4 = std::make_pair("fed", "4");
-    value_type value5 = std::make_pair("feed", "5");
+    value_type value3 = std::make_pair("fed", "3");
+    value_type value4 = std::make_pair("feed", "4");
 
     thisStore.insert(value_type(value1));
     thisStore.insert(value_type(value2));
-    //thisStore.insert(value_type(value3));
-    thisStore.insert(value_type(value5));
+    thisStore.insert(value_type(value4));
 
     otherStore = thisStore;
-    otherStore.insert(value_type(value4));
+    otherStore.insert(value_type(value3));
 
-    //StringStore::const_iterator it = otherStore.begin();
-    //while (it != thisStore.end()) {
-    //    log() << it->first;
-    //    it++;
-    //}
-
-    StringStore::size_type success = otherStore.erase(value5.first);
+    StringStore::size_type success = otherStore.erase(value4.first);
     ASSERT_TRUE(success);
     ASSERT_EQ(thisStore.size(), StringStore::size_type(3));
     ASSERT_EQ(otherStore.size(), StringStore::size_type(3));
@@ -473,20 +462,19 @@ TEST_F(RadixStoreTest, EraseTest2) {
     auto this_it = thisStore.begin();
     auto other_it = otherStore.begin();
 
-    // 'thisStore' should still have the 'feed' object
-    // whereas 'otherStore' should point to the 'fed' object
-    ASSERT_TRUE(this_it->first == value5.first);
-    ASSERT_TRUE(other_it->first == value4.first);
+    // 'thisStore' should still have the 'feed' object whereas 'otherStore' should point to the
+    // 'fed' object.
+    ASSERT_TRUE(this_it->first == value4.first);
+    ASSERT_TRUE(other_it->first == value3.first);
     this_it++;
     other_it++;
 
-    // 'thisStore' should now move to 'fod' - as usual since nothing was removed from that tree
-    // 'otherStore' should skip 'feed' and move to the same 'fod' object
+    // 'thisStore' and 'otherStore' should point to the same 'fod' object.
     ASSERT_TRUE(&*this_it == &*other_it);
     this_it++;
     other_it++;
-    
-    // 'thisStore' and 'otherStore' should point to the same 'foo' object
+
+    // 'thisStore' and 'otherStore' should point to the same 'foo' object.
     ASSERT_TRUE(&*this_it == &*other_it);
     this_it++;
     other_it++;
@@ -495,7 +483,7 @@ TEST_F(RadixStoreTest, EraseTest2) {
     ASSERT_TRUE(other_it == otherStore.end());
 }
 
-TEST_F(RadixStoreTest, EraseTest3) {
+TEST_F(RadixStoreTest, EraseNodeWithSharedParent) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
     value_type value5 = std::make_pair("feed", "5");
@@ -514,18 +502,18 @@ TEST_F(RadixStoreTest, EraseTest3) {
     auto this_it = thisStore.begin();
     auto other_it = otherStore.begin();
 
-    // 'thisStore' should still have the 'feed' object
-    // whereas 'otherStore' should point to the 'fod' object
+    // 'thisStore' should still have the 'feed' object whereas 'otherStore' should point to the
+    // 'fod' object.
     ASSERT_TRUE(this_it->first == value5.first);
     ASSERT_TRUE(other_it->first == value2.first);
     this_it++;
 
-    // now both iterators should point to the same 'fod' object
+    // Both iterators should point to the same 'fod' object.
     ASSERT_TRUE(&*this_it == &*other_it);
     this_it++;
     other_it++;
-    
-    // 'thisStore' and 'otherStore' should point to the same 'foo' object
+
+    // 'thisStore' and 'otherStore' should point to the same 'foo' object.
     ASSERT_TRUE(&*this_it == &*other_it);
     this_it++;
     other_it++;
@@ -534,7 +522,7 @@ TEST_F(RadixStoreTest, EraseTest3) {
     ASSERT_TRUE(other_it == otherStore.end());
 }
 
-TEST_F(RadixStoreTest, EraseTest4) {
+TEST_F(RadixStoreTest, EraseNonLeafNodeWithSharedParent) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
     value_type value3 = std::make_pair("fee", "3");
@@ -549,12 +537,6 @@ TEST_F(RadixStoreTest, EraseTest4) {
 
     StringStore::size_type success = otherStore.erase(value3.first);
 
-    //StringStore::const_iterator it = otherStore.begin();
-    //while (it != otherStore.end()) {
-    //    log() << it->first;
-    //    it++;
-    //}
-
     ASSERT_TRUE(success);
     ASSERT_EQ(thisStore.size(), StringStore::size_type(4));
     ASSERT_EQ(otherStore.size(), StringStore::size_type(3));
@@ -562,23 +544,23 @@ TEST_F(RadixStoreTest, EraseTest4) {
     auto this_it = thisStore.begin();
     auto other_it = otherStore.begin();
 
-    // 'thisStore' should still have the 'fee' object
-    // whereas 'otherStore' should point to the 'feed' object
+    // 'thisStore' should still have the 'fee' object whereas 'otherStore' should point to the
+    // 'feed' object.
     ASSERT_TRUE(this_it->first == value3.first);
     ASSERT_TRUE(other_it->first == value5.first);
     this_it++;
 
-    // now both iterators should point to the same 'feed' object
-    ASSERT_TRUE(&*this_it == &*other_it);
-    this_it++;
-    other_it++;
-     
-    // 'thisStore' and 'otherStore' should point to the same 'fod' object
+    // Now both iterators should point to the same 'feed' object.
     ASSERT_TRUE(&*this_it == &*other_it);
     this_it++;
     other_it++;
 
-    // 'thisStore' and 'otherStore' should point to the same 'foo' object
+    // 'thisStore' and 'otherStore' should point to the same 'fod' object.
+    ASSERT_TRUE(&*this_it == &*other_it);
+    this_it++;
+    other_it++;
+
+    // 'thisStore' and 'otherStore' should point to the same 'foo' object.
     ASSERT_TRUE(&*this_it == &*other_it);
     this_it++;
     other_it++;
@@ -606,8 +588,6 @@ TEST_F(RadixStoreTest, ErasePrefixOfAnotherKeyOfCopiedStoreTest) {
     StringStore::const_iterator iter = thisStore.find(otherKey);
     ASSERT_TRUE(iter != thisStore.end());
     ASSERT_EQ(iter->first, otherKey);
-
-    // StringStore::const_iterator baseIter = baseStore.begin();
 }
 
 TEST_F(RadixStoreTest, ErasePrefixOfAnotherKeyTest) {
@@ -698,7 +678,7 @@ TEST_F(RadixStoreTest, CopyTest) {
 
     ASSERT_TRUE(copy_iter->first == "baz");
 
-    // 'baz' should not be in iter
+    // Node 'baz' should not be in 'thisStore'
     ASSERT_FALSE(iter->first == "baz");
     copy_iter++;
 
@@ -886,40 +866,40 @@ TEST_F(RadixStoreTest, MergeEmptyInsertionThis) {
     ASSERT_TRUE(merged == thisStore);
 }
 
- TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
- value_type value1 = std::make_pair("1", "foo");
- value_type value2 = std::make_pair("2", "baz");
- value_type value3 = std::make_pair("3", "bar");
- value_type value4 = std::make_pair("4", "faz");
- value_type value5 = std::make_pair("5", "too");
- value_type value6 = std::make_pair("6", "moo");
- value_type value7 = std::make_pair("1", "modified");
- value_type value8 = std::make_pair("2", "modified2");
+TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
+    value_type value1 = std::make_pair("1", "foo");
+    value_type value2 = std::make_pair("2", "baz");
+    value_type value3 = std::make_pair("3", "bar");
+    value_type value4 = std::make_pair("4", "faz");
+    value_type value5 = std::make_pair("5", "too");
+    value_type value6 = std::make_pair("6", "moo");
+    value_type value7 = std::make_pair("1", "modified");
+    value_type value8 = std::make_pair("2", "modified2");
 
- baseStore.insert(value_type(value1));
- baseStore.insert(value_type(value2));
- baseStore.insert(value_type(value3));
- baseStore.insert(value_type(value4));
+    baseStore.insert(value_type(value1));
+    baseStore.insert(value_type(value2));
+    baseStore.insert(value_type(value3));
+    baseStore.insert(value_type(value4));
 
- thisStore = baseStore;
- otherStore = baseStore;
+    thisStore = baseStore;
+    otherStore = baseStore;
 
- thisStore.update(value_type(value7));
- thisStore.erase(value4.first);
- thisStore.insert(value_type(value5));
+    thisStore.update(value_type(value7));
+    thisStore.erase(value4.first);
+    thisStore.insert(value_type(value5));
 
- otherStore.update(value_type(value8));
- otherStore.erase(value3.first);
- otherStore.insert(value_type(value6));
+    otherStore.update(value_type(value8));
+    otherStore.erase(value3.first);
+    otherStore.insert(value_type(value6));
 
- expected.insert(value_type(value7));
- expected.insert(value_type(value8));
- expected.insert(value_type(value5));
- expected.insert(value_type(value6));
+    expected.insert(value_type(value7));
+    expected.insert(value_type(value8));
+    expected.insert(value_type(value5));
+    expected.insert(value_type(value6));
 
- StringStore merged = thisStore.merge3(baseStore, otherStore);
+    StringStore merged = thisStore.merge3(baseStore, otherStore);
 
- ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(merged == expected);
 }
 
 TEST_F(RadixStoreTest, MergeConflictingModifications) {
@@ -982,51 +962,6 @@ TEST_F(RadixStoreTest, MergeConflictingInsertions) {
     ASSERT_THROWS(thisStore.merge3(baseStore, otherStore), merge_conflict_exception);
 }
 
-TEST_F(RadixStoreTest, ReverseUpperBoundTest) {
-    value_type value1 = std::make_pair("foo", "1");
-    value_type value2 = std::make_pair("bar", "2");
-    value_type value3 = std::make_pair("baz", "3");
-    value_type value4 = std::make_pair("fools", "4");
-
-    thisStore.insert(value_type(value1));
-    thisStore.insert(value_type(value2));
-    thisStore.insert(value_type(value3));
-    thisStore.insert(value_type(value4));
-
-    StringStore::const_iterator iter1 = thisStore.rupper_bound(value4.first);
-    ASSERT_EQ(iter1->first, "foo");
-
-    iter1++;
-    ASSERT_EQ(iter1->first, "baz");
-
-    StringStore::const_iterator iter2 = thisStore.rupper_bound(value2.first);
-    ASSERT_TRUE(iter2 == thisStore.rend());
-
-    StringStore::const_iterator iter3 = thisStore.rupper_bound("dummy_key");
-    ASSERT_TRUE(iter3 == thisStore.rend());
-}
-
-TEST_F(RadixStoreTest, ReverseLowerBoundTest) {
-    value_type value1 = std::make_pair("foo", "1");
-    value_type value2 = std::make_pair("bar", "2");
-    value_type value3 = std::make_pair("baz", "3");
-    value_type value4 = std::make_pair("fools", "4");
-
-    thisStore.insert(value_type(value1));
-    thisStore.insert(value_type(value2));
-    thisStore.insert(value_type(value3));
-    thisStore.insert(value_type(value4));
-
-    StringStore::const_iterator iter1 = thisStore.rlower_bound(value2.first);
-    ASSERT_EQ(iter1->first, "bar");
-
-    iter1++;
-    ASSERT_TRUE(iter1 == thisStore.rend());
-
-    StringStore::const_iterator iter2 = thisStore.rlower_bound("dummy_key");
-    ASSERT_TRUE(iter2 == thisStore.rend());
-}
-
 TEST_F(RadixStoreTest, UpperBoundTest) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("bar", "2");
@@ -1072,7 +1007,6 @@ TEST_F(RadixStoreTest, ReverseIteratorTest) {
     value_type value4 = std::make_pair("fools", "5");
     value_type value5 = std::make_pair("foods", "4");
 
-
     thisStore.insert(value_type(value4));
     thisStore.insert(value_type(value5));
     thisStore.insert(value_type(value1));
@@ -1084,6 +1018,144 @@ TEST_F(RadixStoreTest, ReverseIteratorTest) {
         ASSERT_EQ(iter->second, std::to_string(cur));
         --cur;
     }
+    ASSERT_EQ(cur, 0);
+}
+
+TEST_F(RadixStoreTest, ReverseIteratorFromForwardIteratorTest) {
+    value_type value1 = std::make_pair("foo", "3");
+    value_type value2 = std::make_pair("bar", "1");
+    value_type value3 = std::make_pair("baz", "2");
+    value_type value4 = std::make_pair("fools", "5");
+    value_type value5 = std::make_pair("foods", "4");
+
+    thisStore.insert(value_type(value4));
+    thisStore.insert(value_type(value5));
+    thisStore.insert(value_type(value1));
+    thisStore.insert(value_type(value3));
+    thisStore.insert(value_type(value2));
+
+    int cur = 1;
+    auto iter = thisStore.begin();
+    while (iter != thisStore.end()) {
+        ASSERT_EQ(iter->second, std::to_string(cur));
+        ++cur;
+        ++iter;
+    }
+
+    ASSERT_EQ(cur, 6);
+    ASSERT_TRUE(iter == thisStore.end());
+
+    --cur;
+    // This should create a reverse iterator that starts at the very beginning (for the reverse
+    // iterator).
+    StringStore::const_reverse_iterator riter(iter);
+    while (riter != thisStore.rend()) {
+        ASSERT_EQ(riter->second, std::to_string(cur));
+        --cur;
+        ++riter;
+    }
+
+    ASSERT_EQ(cur, 0);
+}
+
+TEST_F(RadixStoreTest, ReverseIteratorFromMiddleOfForwardIteratorTest) {
+    value_type value1 = std::make_pair("foo", "3");
+    value_type value2 = std::make_pair("bar", "1");
+    value_type value3 = std::make_pair("baz", "2");
+    value_type value4 = std::make_pair("fools", "5");
+    value_type value5 = std::make_pair("foods", "4");
+
+    thisStore.insert(value_type(value4));
+    thisStore.insert(value_type(value5));
+    thisStore.insert(value_type(value1));
+    thisStore.insert(value_type(value3));
+    thisStore.insert(value_type(value2));
+
+    int cur = 3;
+    auto iter = thisStore.begin();
+    ++iter;
+    ++iter;
+    ++iter;
+
+    // This should create a reverse iterator that starts at the node 'foo'
+    StringStore::const_reverse_iterator riter(iter);
+    while (riter != thisStore.rend()) {
+        ASSERT_EQ(riter->second, std::to_string(cur));
+        --cur;
+        ++riter;
+    }
+
+    ASSERT_EQ(cur, 0);
+}
+
+TEST_F(RadixStoreTest, ReverseIteratorCopyConstructorTest) {
+    value_type value1 = std::make_pair("foo", "3");
+    value_type value2 = std::make_pair("bar", "1");
+    value_type value3 = std::make_pair("baz", "2");
+    value_type value4 = std::make_pair("fools", "5");
+    value_type value5 = std::make_pair("foods", "4");
+
+    thisStore.insert(value_type(value4));
+    thisStore.insert(value_type(value5));
+    thisStore.insert(value_type(value1));
+    thisStore.insert(value_type(value3));
+    thisStore.insert(value_type(value2));
+
+    int cur = 3;
+    auto iter = thisStore.begin();
+    auto iter2(iter);
+    ASSERT_EQ(&*iter, &*iter2);
+
+    ++iter;
+    ++iter2;
+    ASSERT_EQ(&*iter, &*iter2);
+
+    ++iter;
+    ++iter2;
+    ASSERT_EQ(&*iter, &*iter2);
+
+    ++iter;
+    ++iter2;
+    ASSERT_EQ(&*iter, &*iter2);
+
+    // This should create a reverse iterator that starts at the node 'foo'
+    StringStore::const_reverse_iterator riter(iter);
+    StringStore::const_reverse_iterator riter2(riter);
+    while (riter != thisStore.rend()) {
+        ASSERT_EQ(&*riter, &*riter2);
+        --cur;
+        ++riter;
+        ++riter2;
+    }
+
+    ASSERT_EQ(cur, 0);
+}
+
+TEST_F(RadixStoreTest, ReverseIteratorAssignmentOpTest) {
+    value_type value1 = std::make_pair("foo", "3");
+    value_type value2 = std::make_pair("bar", "1");
+    value_type value3 = std::make_pair("baz", "2");
+    value_type value4 = std::make_pair("fools", "5");
+    value_type value5 = std::make_pair("foods", "4");
+
+    thisStore.insert(value_type(value4));
+    thisStore.insert(value_type(value5));
+    thisStore.insert(value_type(value1));
+    thisStore.insert(value_type(value3));
+    thisStore.insert(value_type(value2));
+
+    int cur = 5;
+    auto iter = thisStore.begin();
+
+    // This should create a reverse iterator that starts at the node 'foo'
+    StringStore::const_reverse_iterator riter(iter);
+    riter = thisStore.rbegin();
+    while (riter != thisStore.rend()) {
+        ASSERT_EQ(riter->second, std::to_string(cur));
+        --cur;
+        ++riter;
+    }
+
     ASSERT_EQ(cur, 0);
 }
 
