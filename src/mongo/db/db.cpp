@@ -416,8 +416,9 @@ ExitCode _initAndListen(int listenPort) {
 
     auto startupOpCtx = serviceContext->makeOperationContext(&cc());
 
-    bool canCallFCVSetIfCleanStartup =
-        !storageGlobalParams.readOnly && (storageGlobalParams.engine != "devnull");
+    // TODO: Remove biggie from this list after implemented
+    bool canCallFCVSetIfCleanStartup = !storageGlobalParams.readOnly &&
+        (storageGlobalParams.engine != "devnull") && (storageGlobalParams.engine != "biggie");
     if (canCallFCVSetIfCleanStartup && !replSettings.usingReplSets()) {
         Lock::GlobalWrite lk(startupOpCtx.get());
         FeatureCompatibilityVersion::setIfCleanStartup(startupOpCtx.get(),
@@ -629,7 +630,7 @@ ExitCode _initAndListen(int listenPort) {
     } else if (replSettings.usingReplSets()) {
         kind = LogicalSessionCacheServer::kReplicaSet;
     }
-
+    
     auto sessionCache = makeLogicalSessionCacheD(serviceContext, kind);
     LogicalSessionCache::set(serviceContext, std::move(sessionCache));
 
