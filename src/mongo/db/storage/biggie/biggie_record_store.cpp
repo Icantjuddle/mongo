@@ -43,6 +43,7 @@
 #include "mongo/db/storage/biggie/store.h"
 #include "mongo/db/storage/key_string.h"
 #include "mongo/stdx/memory.h"
+#include "mongo/util/hex.h"
 #include "mongo/util/log.h"
 
 #include <cstring>
@@ -93,16 +94,18 @@ RecordStore::RecordStore(StringData ns,
       _cappedMaxDocs(cappedMaxDocs),
       _identStr(ident.rawData(), ident.size()),
       _ident(_identStr.data(), _identStr.size()),
-      _prefix(createKey(_ident, 0)),
+      _prefix(createKey(_ident, std::numeric_limits<int64_t>::min())),
       _postfix(createKey(_ident, std::numeric_limits<int64_t>::max())),
-      _cappedCallback(cappedCallback) {}
+      _cappedCallback(cappedCallback) {
+    log() << "RS created with " << _identStr;
+}
 
 const char* RecordStore::name() const {
     return "biggie";
 }
 
 const std::string& RecordStore::getIdent() const {
-    return _prefix;  // TODO: will change in SERVER-35949
+    return _identStr;
 }
 
 long long RecordStore::dataSize(OperationContext* opCtx) const {
@@ -120,7 +123,11 @@ long long RecordStore::dataSize(OperationContext* opCtx) const {
 
 long long RecordStore::numRecords(OperationContext* opCtx) const {
     StringStore* str = getRecoveryUnitBranch_forking(opCtx);
-    return str->distance(str->lower_bound(_prefix), str->upper_bound(_postfix));
+    auto nR = str->distance(str->lower_bound(_prefix), str->upper_bound(_postfix));
+    log() << "NR found: " << nR << " in " << _ident << " between "
+          << toHex(_prefix.data(), _prefix.size()) << " "
+          << toHex(_postfix.data(), _postfix.size());
+    return nR;
 }
 
 bool RecordStore::isCapped() const {
@@ -140,20 +147,20 @@ RecordData RecordStore::dataFor(OperationContext* opCtx, const RecordId& loc) co
 }
 
 bool RecordStore::findRecord(OperationContext* opCtx, const RecordId& loc, RecordData* rd) const {
-    std::string key = createKey(_ident, loc.repr());
+    log() << "findR in ident " << _ident;
     const StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    StringStore::const_iterator it = workingCopy->find(key);
+    auto it = workingCopy->find(createKey(_ident, loc.repr()));
     if (it == workingCopy->end()) {
         return false;
     }
-    *rd = RecordData(it->second.c_str(), it->second.length());
+    *rd = RecordData(it->second.c_str(), it->second.length()).getOwned();
     return true;
 }
 
 void RecordStore::deleteRecord(OperationContext* opCtx, const RecordId& dl) {
+    log() << "Delete called in " << _ident;
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    std::string key = createKey(_ident, dl.repr());
-    auto numElementsRemoved = workingCopy->erase(key);
+    auto numElementsRemoved = workingCopy->erase(createKey(_ident, dl.repr()));
     invariant(numElementsRemoved == 1);
 }
 
@@ -163,10 +170,12 @@ StatusWith<RecordId> RecordStore::insertRecord(OperationContext* opCtx,
                                                Timestamp) {
     int64_t thisRecordId = nextRecordId();
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    StringStore::value_type vt{createKey(_ident, thisRecordId), std::string(data, len)};
-    workingCopy->insert(std::move(vt));
-    RecordId rID(thisRecordId);
-    return StatusWith<RecordId>(rID);
+    std::string key = createKey(_ident, thisRecordId);
+    log() << "Inserting rec into " << _ident << " with key " << toHex(key.c_str(), key.length());
+    auto rec = workingCopy->insert(StringStore::value_type{key, std::string(data, len)});
+    if (!rec.second)
+        log() << "Could not insert";
+    return StatusWith<RecordId>(RecordId(thisRecordId));
 }
 
 Status RecordStore::insertRecordsWithDocWriter(OperationContext* opCtx,
@@ -175,6 +184,7 @@ Status RecordStore::insertRecordsWithDocWriter(OperationContext* opCtx,
                                                size_t nDocs,
                                                RecordId* idsOut) {
     // TODO : make this an actual optimization
+    log() << "Docwriter";
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     for (size_t i = 0; i < nDocs; i++) {
         int64_t thisRecordId = nextRecordId();
@@ -194,11 +204,12 @@ Status RecordStore::updateRecord(OperationContext* opCtx,
                                  const char* data,
                                  int len,
                                  UpdateNotifier* notifier) {
+    log() << "update in " << _ident;
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     std::string key = createKey(_ident, oldLocation.repr());
     StringStore::iterator it = workingCopy->find(key);
     invariant(it != workingCopy->end());
-    it->second = std::string(data, len);
+    it->second.assign(data, len);
     return Status::OK();
 }
 
@@ -211,6 +222,7 @@ StatusWith<RecordData> RecordStore::updateWithDamages(OperationContext* opCtx,
                                                       const RecordData& oldRec,
                                                       const char* damageSource,
                                                       const mutablebson::DamageVector& damages) {
+    log() << "Updating with dams";
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     std::string key = createKey(_ident, loc.repr());
     StringStore::iterator doc = workingCopy->find(key);
@@ -232,17 +244,21 @@ std::unique_ptr<SeekableRecordCursor> RecordStore::getCursor(OperationContext* o
 }
 
 Status RecordStore::truncate(OperationContext* opCtx) {
+    log() << "truncating " << _ident;
     StringStore* str = getRecoveryUnitBranch_forking(opCtx);
     StringStore::iterator it = str->lower_bound(_prefix);
     StringStore::iterator end = str->upper_bound(_postfix);
     std::vector<std::string> keysToErase;
+    int64_t toErase = 0;
     while (it != end) {
         keysToErase.push_back(it->first);
         ++it;
+        toErase++;
     }
     for (auto k : keysToErase) {
-        str->erase(k);
+        toErase -= str->erase(k);
     }
+    invariant(toErase == 0);
     return Status::OK();
 }
 
@@ -255,6 +271,7 @@ Status RecordStore::validate(OperationContext* opCtx,
                              ValidateAdaptor* adaptor,
                              ValidateResults* results,
                              BSONObjBuilder* output) {
+    /* std::cout << "validate" << std::endl; */
     results->valid = true;
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     auto it = workingCopy->lower_bound(_prefix);
@@ -304,53 +321,71 @@ void RecordStore::updateStatsAfterRepair(OperationContext* opCtx,
 
 RecordStore::Cursor::Cursor(OperationContext* opCtx, const RecordStore& rs) : opCtx(opCtx) {
     _savedPosition = boost::none;
+    _needFirstSeek = true;
     _ident = rs._ident;
     _prefix = rs._prefix;
     _postfix = rs._postfix;
+    log() << "CREATE cursor for ident " << _ident << " with #elements:" << rs.numRecords(opCtx);
 }
 
 boost::optional<Record> RecordStore::Cursor::next() {
+    /* std::cout << "Next" << std::endl; */
     _savedPosition = boost::none;
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
+    /* std::cout << "Next" << std::endl; */
     if (_needFirstSeek) {
         _needFirstSeek = false;
         it = workingCopy->lower_bound(_prefix);
-    } else if (it != workingCopy->end()) {
+        /* if (it != workingCopy->end()) */
+        /*     std::cout << "Starting at " << it->first << " with len " */
+        /*               << std::to_string(it->first.length()) << std::endl; */
+    } else if (it != workingCopy->end() && !_lastMoveWasRestore) {
+        /* std::cout << "Moving off of item with len " << std::to_string(it->first.length()) */
+        /* << std::endl; */
+        /* std::cout << "iterating" << std::endl; */
         ++it;
-    } else {
-        return boost::none;
     }
-
+    _lastMoveWasRestore = false;
     if (it != workingCopy->end() && inPrefix(it->first)) {
-        _savedPosition = it->first;
-        Record nextRecord;
-        nextRecord.id = RecordId(extractRecordId(it->first));
-        nextRecord.data = RecordData(it->second.c_str(), it->second.length());
-        return nextRecord;
+        _savedPosition = std::string(it->first);
+        /* std::cout << toHex(it->first.c_str(), it->first.length()) << std::endl; */
+        return Record{RecordId(extractRecordId(it->first)),
+                      RecordData(it->second.c_str(), it->second.length())};
     }
+    /* std::cout << "NONE returned from next" << std::endl; */
     return boost::none;
 }
 
 boost::optional<Record> RecordStore::Cursor::seekExact(const RecordId& id) {
-    _needFirstSeek = false;
+    /* std::cout << "seek xact to " << std::to_string(id.repr()) << std::endl; */
     _savedPosition = boost::none;
+    _lastMoveWasRestore = false;
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     std::string key = createKey(_ident, id.repr());
     it = workingCopy->find(key);
     if (it == workingCopy->end() || !inPrefix(it->first)) {
         return boost::none;
     }
+    _needFirstSeek = false;
     _savedPosition = it->first;
-    return Record{id, RecordData(it->second.c_str(), it->second.length())};
+    return Record{id, RecordData(it->second.c_str(), it->second.length()).getOwned()};
 }
 
-void RecordStore::Cursor::save() {}
+void RecordStore::Cursor::save() {
+    /* std::cout << "Save" << std::endl; */
+}
 
-void RecordStore::Cursor::saveUnpositioned() {}
+void RecordStore::Cursor::saveUnpositioned() {
+    /* std::cout << "SaveU" << std::endl; */
+}
 
 bool RecordStore::Cursor::restore() {
+    /* std::cout << "Restore" << std::endl; */
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    it = (_savedPosition) ? workingCopy->find(_savedPosition.value()) : workingCopy->end();
+    it = (_savedPosition) ? workingCopy->lower_bound(_savedPosition.value()) : workingCopy->end();
+    /* if (it != workingCopy->end()) */
+    /*     std::cout << "restored" << toHex(it->first.c_str(), it->first.length()) << std::endl; */
+    _lastMoveWasRestore = it == workingCopy->end() || it->first != _savedPosition.value();
     return true;
 }
 
@@ -365,7 +400,7 @@ void RecordStore::Cursor::reattachToOperationContext(OperationContext* opCtx) {
 }
 
 bool RecordStore::Cursor::inPrefix(const std::string& key_string) {
-    return (key_string > _prefix) && (key_string < _postfix);
+    return (key_string >= _prefix) && (key_string <= _postfix);
 }
 
 // Reverse Cursor
@@ -437,7 +472,7 @@ void RecordStore::ReverseCursor::reattachToOperationContext(OperationContext* op
 }
 
 bool RecordStore::ReverseCursor::inPrefix(const std::string& key_string) {
-    return (key_string > _prefix) && (key_string < _postfix);
+    return (key_string >= _prefix) && (key_string <= _postfix);
 }
 }  // namespace biggie
 }  // namespace mongo

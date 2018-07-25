@@ -46,18 +46,25 @@ RecoveryUnit::RecoveryUnit(KVEngine* parentKVEngine, stdx::function<void()> cb)
 void RecoveryUnit::beginUnitOfWork(OperationContext* opCtx) {}
 
 void RecoveryUnit::commitUnitOfWork() {
-    while (true) {
-        std::shared_ptr<StringStore> master = _KVEngine->getMaster();
-        try {
-            _workingCopy->merge3(*_mergeBase, *master);
-        } catch (const merge_conflict_exception&) {
-            throw WriteConflictException();
-        }
-        stdx::lock_guard<stdx::mutex> lkOnMaster(_KVEngine->getMasterLock());
-        if (_KVEngine->getMaster_inlock() == master) {
-            _KVEngine->setMaster_inlock(std::move(_workingCopy));
-            _mergeBase.reset();
-            break;
+    if (_workingCopy || _mergeBase) {
+        while (true) {
+            std::shared_ptr<StringStore> master = _KVEngine->getMaster();
+            try {
+                auto mergedWithMaster =
+                    std::make_unique<StringStore>(_workingCopy->merge3(*_mergeBase, *master));
+                _workingCopy.reset();
+                _workingCopy = std::move(mergedWithMaster);
+            } catch (const merge_conflict_exception&) {
+                log() << "Biggie Merge conflict";
+                throw WriteConflictException();
+            }
+            stdx::lock_guard<stdx::mutex> lkOnMaster(_KVEngine->getMasterLock());
+            if (_KVEngine->getMaster_inlock() == master) {
+                _KVEngine->setMaster_inlock(std::move(_workingCopy));
+                _mergeBase.reset();
+                log() << "Biggie Commit successful";
+                break;
+            }
         }
     }
     try {
@@ -71,6 +78,7 @@ void RecoveryUnit::commitUnitOfWork() {
 }
 
 void RecoveryUnit::abortUnitOfWork() {
+    log() << "Biggie abort unit of work";
     _workingCopy.reset();
     _mergeBase.reset();
     try {
@@ -114,6 +122,7 @@ bool RecoveryUnit::forkIfNeeded() {
     _mergeBase = _KVEngine->getMaster();
     // TODO : later on this needs to be changed to use their copy function.
     _workingCopy = std::make_unique<StringStore>(*_mergeBase);
+    invariant(_workingCopy->begin() != _mergeBase->begin());
     return true;
 }
 
