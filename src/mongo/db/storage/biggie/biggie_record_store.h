@@ -145,8 +145,9 @@ private:
         std::string _prefix;
         std::string _postfix;
         StringStore::const_iterator it;
-        boost::optional<std::string> _savedPosition;
-        bool _needFirstSeek{true};
+        boost::optional<std::string> _savedPosition = boost::none;
+        bool _needFirstSeek = true;
+        bool _lastMoveWasRestore = false;
 
     public:
         Cursor(OperationContext* opCtx, const RecordStore& rs);
@@ -167,8 +168,9 @@ private:
         std::string _prefix;
         std::string _postfix;
         StringStore::const_reverse_iterator it;
-        boost::optional<std::string> _savedPosition;
-        bool _needFirstSeek{true};
+        boost::optional<std::string> _savedPosition = boost::none;
+        bool _needFirstSeek = true;
+        bool _lastMoveWasRestore = false;
 
     public:
         ReverseCursor(OperationContext* opCtx, const RecordStore& rs);
