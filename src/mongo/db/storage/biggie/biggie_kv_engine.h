@@ -45,7 +45,7 @@ class JournalListener;
  */
 class KVEngine : public ::mongo::KVEngine {
     std::shared_ptr<StringStore> _master = std::make_shared<StringStore>();
-    std::set<StringData> _idents;  // TODO : replace with a query to _master.
+    std::map<std::string, bool> _idents;  // TODO : replace with a query to _master.
     mutable stdx::mutex _masterLock;
 
 public:
@@ -73,9 +73,7 @@ public:
                                                                StringData ident,
                                                                const IndexDescriptor* desc);
 
-    virtual Status dropIdent(OperationContext* opCtx, StringData ident) {
-        return Status::OK();
-    }
+    virtual Status dropIdent(OperationContext* opCtx, StringData ident);
 
     virtual bool supportsDocLocking() const {
         return false;  // TODO : do this later.
@@ -119,7 +117,12 @@ public:
     }
 
     std::vector<std::string> getAllIdents(OperationContext* opCtx) const {
-        return std::vector<std::string>();
+        std::vector<std::string> idents;
+        for (const auto& i : _idents) {
+            idents.push_back(i.first);
+            /* std::cout << i.first << std::endl;  // TODO: rmthis */
+        }
+        return idents;
     }
 
     virtual void cleanShutdown(){};

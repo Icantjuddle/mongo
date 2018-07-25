@@ -57,8 +57,8 @@ Status KVEngine::createRecordStore(OperationContext* opCtx,
                                    StringData ns,
                                    StringData ident,
                                    const CollectionOptions& options) {
-    log() << "Creating Ident in KVEngine with ident: " << ident;
-    _idents.insert(ident);
+    /* log() << "Creating RecordStore in KVEngine with ident: " << ident; */
+    _idents[ident.toString()] = true;
     return Status::OK();
 }
 
@@ -67,6 +67,8 @@ std::unique_ptr<::mongo::RecordStore> KVEngine::getRecordStore(OperationContext*
                                                                StringData ident,
                                                                const CollectionOptions& options) {
     // TODO: deal with options.
+    /* log() << "Getting RecordStore in KVEngine with ident: " << ident; */
+    _idents[ident.toString()] = true;
     return std::make_unique<RecordStore>(ns, ident);
 }
 
@@ -88,15 +90,32 @@ std::shared_ptr<StringStore> KVEngine::getMaster_inlock() const {
 Status KVEngine::createSortedDataInterface(OperationContext* opCtx,
                                            StringData ident,
                                            const IndexDescriptor* desc) {
+    /* std::cout << "Create SDI called with ident " << ident.toString() << std::endl; */
+    _idents[ident.toString()] = false;
     return Status::OK();  // I don't think we actually need to do anything here
 }
 
 mongo::SortedDataInterface* KVEngine::getSortedDataInterface(OperationContext* opCtx,
                                                              StringData ident,
                                                              const IndexDescriptor* desc) {
+    _idents[ident.toString()] = false;
     return new SortedDataInterface(Ordering::make(desc->keyPattern()), desc->unique(), ident);
 }
 
+Status KVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
+    /* invariant(_idents.count(ident.toString()) == 1); */
+    if (_idents[ident.toString()] == true) {  // is RS
+        CollectionOptions s;
+        auto rs = getRecordStore(opCtx, ""_sd, ident, s);
+        /* std::cout << "Truncating RS w/ Ident: " << ident.toString() << std::endl; */
+        return rs->truncate(opCtx);
+    } else if (_idents.count(ident.toString()) > 0) {
+        auto sdi = std::make_unique<SortedDataInterface>(Ordering::make(BSONObj()), true, ident);
+        /* std::cout << "Truncating SDI w/ Ident: " << ident.toString() << std::endl; */
+        return sdi->truncate(opCtx);
+    }
+    return Status::OK();
+}
 
 class EmptyRecordCursor final : public SeekableRecordCursor {
 public:

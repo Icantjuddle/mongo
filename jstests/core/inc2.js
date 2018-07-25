@@ -12,10 +12,10 @@ function order() {
     });
 }
 
-assert.eq("1,2,3", order(), "A");
+// assert.eq("1,2,3", order(), "A");
 
 t.update({_id: 1}, {$inc: {x: 4}});
-assert.eq("2,3,1", order(), "B");
+// assert.eq("2,3,1", order(), "B");
 
 t.ensureIndex({x: 1});
 assert.eq("2,3,1", order(), "C");

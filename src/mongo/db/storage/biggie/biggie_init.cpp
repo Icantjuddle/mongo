@@ -31,7 +31,6 @@
 
 #include "mongo/base/init.h"
 #include "mongo/db/service_context.h"
-#include "mongo/db/service_context_d.h"
 #include "mongo/db/storage/biggie/biggie_kv_engine.h"
 #include "mongo/db/storage/kv/kv_storage_engine.h"
 #include "mongo/db/storage/storage_engine_init.h"

@@ -147,6 +147,7 @@ private:
         StringStore::iterator it;
         boost::optional<std::string> _savedPosition;
         bool _needFirstSeek{true};
+        bool _lastMoveWasRestore{false};
 
     public:
         Cursor(OperationContext* opCtx, const RecordStore& rs);
