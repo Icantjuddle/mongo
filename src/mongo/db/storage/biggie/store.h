@@ -540,8 +540,7 @@ public:
     }
 
     void merge3(const RadixStore& base, const RadixStore& other) {
-        std::pair<int, int> diff =
-            _merge3Helper(this->_root.get(), *base._root.get(), *other._root.get());
+        _merge3Helper(this->_root.get(), *base._root.get(), *other._root.get());
     }
 
     // iterators

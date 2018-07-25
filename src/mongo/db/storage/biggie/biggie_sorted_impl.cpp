@@ -55,15 +55,21 @@ namespace mongo {
 namespace biggie {
 namespace {
 
+const Ordering allAscending = Ordering::make(BSONObj());
 const int TempKeyMaxSize = 1024;  // this goes away with SERVER-3372
 
 // This function is the same as the one in record store--basically, using the git analogy, create
 // a working branch if one does not exist.
 StringStore* getRecoveryUnitBranch_forking(OperationContext* opCtx) {
-    RecoveryUnit* biggieRCU = checked_cast<RecoveryUnit*>(opCtx->recoveryUnit());
+    biggie::RecoveryUnit* biggieRCU = checked_cast<biggie::RecoveryUnit*>(opCtx->recoveryUnit());
     invariant(biggieRCU);
     biggieRCU->forkIfNeeded();
     return biggieRCU->getWorkingCopy();
+}
+
+void dirtyRecoveryUnit(OperationContext* opCtx) {
+    biggie::RecoveryUnit* biggieRCU = checked_cast<biggie::RecoveryUnit*>(opCtx->recoveryUnit());
+    biggieRCU->makeDirty();
 }
 
 // This just checks to see if the field names are empty or not.
@@ -116,7 +122,6 @@ std::string combineKeyAndRIDWithReset(const BSONObj& key,
     b.append("", prefixToUse);                                  // prefix
     b.append("", std::string(ks->getBuffer(), ks->getSize()));  // key
 
-    Ordering allAscending = Ordering::make(BSONObj());
     std::unique_ptr<KeyString> retKs =
         std::make_unique<KeyString>(version, b.obj(), allAscending, loc);
     return std::string(retKs->getBuffer(), retKs->getSize());
@@ -131,7 +136,6 @@ std::unique_ptr<KeyString> combineKeyAndRIDKS(const BSONObj& key,
     BSONObjBuilder b;
     b.append("", prefixToUse);                                // prefix
     b.append("", std::string(ks.getBuffer(), ks.getSize()));  // key
-    Ordering allAscending = Ordering::make(BSONObj());
     return std::make_unique<KeyString>(version, b.obj(), allAscending, loc);
 }
 
@@ -150,7 +154,6 @@ std::string combineKeyAndRID(const BSONObj& key,
     BSONObjBuilder b;
     b.append("", prefixToUse);                                // prefix
     b.append("", std::string(ks.getBuffer(), ks.getSize()));  // key
-    Ordering allAscending = Ordering::make(BSONObj());
     std::unique_ptr<KeyString> retKs =
         std::make_unique<KeyString>(version, b.obj(), allAscending, loc);
     return std::string(retKs->getBuffer(), retKs->getSize());
@@ -170,34 +173,21 @@ IndexKeyEntry keyStringToIndexKeyEntry(std::string keyString,
     BufReader brTbInternal(typeBitsString.c_str(), typeBitsString.length());
     tbInternal.resetFromBuffer(&brTbInternal);
 
-    Ordering allAscending = Ordering::make(BSONObj());
-
     BSONObj bsonObj =
         KeyString::toBsonSafe(keyString.c_str(), keyString.length(), allAscending, tbOuter);
 
-    // First we get the BSONObj key.
     SharedBuffer sb;
-    int counter = 0;
-    for (auto&& elem : bsonObj) {
-        // The key is the second field.
-        if (counter == 1) {
-            const char* valStart = elem.valuestr();
-            int valSize = elem.valuestrsize();
-            KeyString ks(version);
-            ks.resetFromBuffer(valStart, valSize);
+    auto it = BSONObjIterator(bsonObj);
+    ++it;  // We want the second part
+    KeyString ks(version);
+    ks.resetFromBuffer((*it).valuestr(), (*it).valuestrsize());
 
-            BSONObj originalKey =
-                KeyString::toBsonSafe(ks.getBuffer(), ks.getSize(), order, tbInternal);
+    BSONObj originalKey = KeyString::toBsonSafe(ks.getBuffer(), ks.getSize(), order, tbInternal);
 
-            sb = SharedBuffer::allocate(originalKey.objsize());
-            std::memcpy(sb.get(), originalKey.objdata(), originalKey.objsize());
-            break;
-        }
-        counter++;
-    }
+    sb = SharedBuffer::allocate(originalKey.objsize());
+    std::memcpy(sb.get(), originalKey.objdata(), originalKey.objsize());
     RecordId rid = KeyString::decodeRecordIdAtEnd(keyString.c_str(), keyString.length());
-    ConstSharedBuffer csb(sb);
-    BSONObj key(csb);
+    BSONObj key(ConstSharedBuffer{sb});
 
     return IndexKeyEntry(key, rid);
 }
@@ -269,6 +259,7 @@ Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& lo
     }
 
     std::string workingCopyInsertKey = combineKeyAndRID(key, loc, _prefix, _order);
+    // TODO: remove this seems to be a duplicate of newKS above
     std::unique_ptr<KeyString> workingCopyInternalKs = keyToKeyString(key, _order);
     std::unique_ptr<KeyString> workingCopyOuterKs = combineKeyAndRIDKS(key, loc, _prefix, _order);
 
@@ -282,6 +273,7 @@ Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& lo
     _lastKeyToString = newKSToString;
     _lastRID = loc.repr();
 
+    dirtyRecoveryUnit(_opCtx);
     return Status::OK();
 }
 
@@ -360,6 +352,7 @@ Status SortedDataInterface::insert(OperationContext* opCtx,
         std::string(reinterpret_cast<const char*>(workingCopyInternalKs->getTypeBits().getBuffer()),
                     workingCopyInternalKs->getTypeBits().getSize());
     workingCopy->insert(StringStore::value_type(workingCopyInsertKey, internalTbString));
+    dirtyRecoveryUnit(opCtx);
     return Status::OK();
 }
 
@@ -370,18 +363,23 @@ void SortedDataInterface::unindex(OperationContext* opCtx,
     std::string workingCopyInsertKey = combineKeyAndRID(key, loc, _prefix, _order);
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     workingCopy->erase(workingCopyInsertKey);
+    dirtyRecoveryUnit(opCtx);
 }
 
 // This function is, as of now, not in the interface, but there exists a server ticket to add
 // truncate to the list of commands able to be used.
 Status SortedDataInterface::truncate(OperationContext* opCtx) {
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    auto workingCopyLowerBound = workingCopy->lower_bound(_KSForIdentStart);
-    auto workingCopyUpperBound = workingCopy->upper_bound(_KSForIdentEnd);
-    // workingCopy->erase(workingCopyLowerBound, workingCopyUpperBound);
-    while (workingCopyLowerBound != workingCopyUpperBound) {
-        workingCopy->erase(workingCopyLowerBound->first);
-        ++workingCopyLowerBound;
+    std::vector<std::string> toDelete;
+    auto end = workingCopy->upper_bound(_KSForIdentEnd);
+    for (auto it = workingCopy->lower_bound(_KSForIdentStart); it != end; ++it) {
+        toDelete.push_back(it->first);
+    }
+    if (!toDelete.empty()) {
+        ON_BLOCK_EXIT([opCtx]() { dirtyRecoveryUnit(opCtx); });
+        for (const auto& key : toDelete) {
+            workingCopy->erase(key);
+        }
     }
     return Status::OK();
 }
