@@ -180,13 +180,14 @@ int compareTwoKeys(
     size_t size2 = KeyString::sizeWithoutRecordIdAtEnd(ks2.c_str(), ks2.length());
     auto cmpSmallerMemory =
         std::memcmp((void*)ks1.c_str(), (void*)ks2.c_str(), std::min(size1, size2));
+
     if (cmpSmallerMemory != 0) {
         return cmpSmallerMemory;
-    } else if (size1 == size2) {
-        return 0;
-    } else {
-        return (size1 > size2);
     }
+    if (size1 == size2) {
+        return 0;
+    }
+    return (size1 > size2);
 }
 
 }  // namepsace
@@ -196,14 +197,11 @@ SortedDataBuilderInterface::SortedDataBuilderInterface(OperationContext* opCtx,
                                                        Ordering order,
                                                        std::string prefix,
                                                        std::string postfix)
-    : opCtx(opCtx), dupsAllowed(dupsAllowed), order(order), prefix(prefix), postfix(postfix) {
-    hasLast = false;
-    lastKeyToString = "";
-    lastRID = -1;
-}
+    : opCtx(opCtx), dupsAllowed(dupsAllowed), order(order), prefix(prefix), postfix(postfix), hasLast(false), lastKeyToString(""), lastRID(-1){}
 
 void SortedDataBuilderInterface::commit(bool mayInterrupt) {
     biggie::RecoveryUnit* ru = (biggie::RecoveryUnit*)opCtx->recoveryUnit();
+    ru->forkIfNeeded();
     ru->commitUnitOfWork();
 }
 
@@ -226,7 +224,8 @@ Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& lo
     if (twoKeyCmp < 0 || (dupsAllowed && twoKeyCmp == 0 && twoRIDCmp < 0)) {
         return Status(ErrorCodes::InternalError,
                       "expected ascending (key, RecordId) order in bulk builder");
-    } else if (!dupsAllowed && twoKeyCmp == 0 && twoRIDCmp != 0) {
+    }
+    if (!dupsAllowed && twoKeyCmp == 0 && twoRIDCmp != 0) {
         return dupKeyError(key);
     }
 
@@ -234,8 +233,7 @@ Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& lo
     std::unique_ptr<KeyString> workingCopyInternalKs = keyToKeyString(key, order);
     std::unique_ptr<KeyString> workingCopyOuterKs = combineKeyAndRIDKS(key, loc, prefix, order);
 
-    std::string internalTbString =
-        std::string((char*)(workingCopyInternalKs->getTypeBits().getBuffer()),
+    std::string internalTbString((char*)(workingCopyInternalKs->getTypeBits().getBuffer()),
                     workingCopyInternalKs->getTypeBits().getSize());
 
     workingCopy->insert(StringStore::value_type(workingCopyInsertKey, internalTbString));
@@ -254,12 +252,10 @@ SortedDataBuilderInterface* SortedDataInterface::getBulkBuilder(OperationContext
 
 SortedDataInterface::SortedDataInterface(const Ordering& ordering, bool isUnique, StringData ident)
     : _order(ordering),
-      // This is the ident, with a \0 appended to it to denote where the ident ends.
-      _prefix(ident.toString().append(1, '\0')),
-      // This is the end of the ident. Since all idents end with a \0, the \1 ensures that the
-      // postfix is after all elements in this ident and before all elements in other idents that
-      // come afterwards.
-      _postfix(ident.toString().append(1, '\1')),
+      _prefix(ident.toString()),
+      // This is the end of the ident. The \0 ensures that the postfix is after all elements in
+      // this ident and before all elements in other idents that come afterwards.
+      _postfix(ident.toString().append(1, '\0')),
       isUnique(isUnique) {
     _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _prefix, ordering);
     _postfixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _postfix, ordering);
@@ -307,7 +303,6 @@ void SortedDataInterface::unindex(OperationContext* opCtx,
     std::string workingCopyInsertKey = combineKeyAndRID(key, loc, _prefix, _order);
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     workingCopy->erase(workingCopyInsertKey);
-    return;
 }
 Status SortedDataInterface::dupKeyCheck(OperationContext* opCtx,
                                         const BSONObj& key,
@@ -383,21 +378,21 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
                                     bool isUnique)
     : opCtx(opCtx),
       workingCopy(workingCopy),
+      endPos(boost::none), endPosReverse(boost::none),
+      endPosValid(false),
       _forward(isForward),
+      atEOF(false),
+      lastMoveWasRestore(false),
       _prefix(_prefix),
       _postfix(_postfix),
       forwardIt(workingCopy->begin()),
       reverseIt(workingCopy->rbegin()),
       _order(order),
-      isUnique(isUnique) {
-    endPos = boost::none;
-    endPosReverse = boost::none;
-    endPosValid = false;
-    atEOF = false;
-    lastMoveWasRestore = false;
+      endPosIncl(false),
+      isUnique(isUnique)
+{
     _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _prefix, order);
     _postfixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _postfix, order);
-    endPosIncl = false;
 }
 
 void SortedDataInterface::Cursor::setEndPosition(const BSONObj& key, bool inclusive) {
@@ -422,7 +417,6 @@ void SortedDataInterface::Cursor::setEndPosition(const BSONObj& key, bool inclus
     } else {
         endPosReverse = StringStore::reverse_iterator(workingCopy->upper_bound(endPosBound));
     }
-    return;
 }
 
 boost::optional<IndexKeyEntry> SortedDataInterface::Cursor::next(RequestedInfo parts) {
@@ -545,7 +539,6 @@ void SortedDataInterface::Cursor::save() {
     } else {
         saveKey = "";
     }
-    return;
 }
 
 void SortedDataInterface::Cursor::restore() {
@@ -602,7 +595,6 @@ void SortedDataInterface::Cursor::restore() {
             lastMoveWasRestore = (twoKeyCmp != 0);
         }
     }
-    return;
 }
 
 void SortedDataInterface::Cursor::detachFromOperationContext() {
@@ -611,7 +603,6 @@ void SortedDataInterface::Cursor::detachFromOperationContext() {
 
 void SortedDataInterface::Cursor::reattachToOperationContext(OperationContext* opCtx) {
     this->opCtx = opCtx;
-    return;
 }
 }  // namespace biggie
 }  // namespace mongo

@@ -56,16 +56,8 @@ public:
 };
 
 class SortedDataInterface : public ::mongo::SortedDataInterface {
-private:
-    const Ordering _order;
-    std::string _prefix;
-    std::string _postfix;
-    std::string _prefixBSON;
-    std::string _postfixBSON;
-    bool isUnique;
-    bool dupsAllowed;
-
 public:
+    // All the following public functions just implement the interface.
     SortedDataInterface(const Ordering& ordering, bool isUnique, StringData ident);
     virtual SortedDataBuilderInterface* getBulkBuilder(OperationContext* opCtx, bool dupsAllowed);
     virtual Status insert(OperationContext* opCtx,
@@ -88,34 +80,16 @@ public:
     virtual std::unique_ptr<mongo::SortedDataInterface::Cursor> newCursor(
         OperationContext* opCtx, bool isForward = true) const override;
     virtual Status initAsEmpty(OperationContext* opCtx);
-    // default is a forward Cursor
-    class Cursor final : public ::mongo::SortedDataInterface::Cursor {
-    private:
-        OperationContext* opCtx;
-        StringStore* workingCopy;  // should not be nullptr
-        boost::optional<StringStore::iterator> endPos;
-        boost::optional<StringStore::reverse_iterator> endPosReverse;
-        bool endPosValid;
-        bool _forward;
-        bool atEOF;
-        bool lastMoveWasRestore;
-        std::string saveKey;
-        std::string _prefix;
-        std::string _postfix;
-        StringStore::iterator forwardIt;
-        StringStore::reverse_iterator reverseIt;
-        Ordering _order;
-        std::string _postfixBSON;
-        std::string _prefixBSON;
-        bool endPosIncl;
-        boost::optional<BSONObj> endPosKey;
-        bool isUnique;
-        boost::optional<IndexKeyEntry> seekAfterProcessing(BSONObj finalKey, bool inclusive);
 
+    // The default is a forward Cursor.
+    class Cursor final : public ::mongo::SortedDataInterface::Cursor {
     public:
+        // All the following public functions just implement the interface.
         Cursor(OperationContext* opCtx,
                bool isForward,
+               // This is the ident.
                std::string _prefix,
+               // This is a string immediately after the ident and before other idents.
                std::string _postfix,
                StringStore* workingCopy,
                Ordering order,
@@ -131,7 +105,56 @@ public:
         virtual void restore();
         virtual void detachFromOperationContext();
         virtual void reattachToOperationContext(OperationContext* opCtx);
+    private:
+        // This is a helper function for seek.
+        boost::optional<IndexKeyEntry> seekAfterProcessing(BSONObj finalKey, bool inclusive);
+        OperationContext* opCtx;
+        // This is the "working copy" of the master "branch" in the git analogy.
+        StringStore* workingCopy;
+        // These store the end positions.
+        boost::optional<StringStore::iterator> endPos;
+        boost::optional<StringStore::reverse_iterator> endPosReverse;
+        // This stores whether or not the endPosition has been set.
+        bool endPosValid;
+        // This means if the cursor is a forward or reverse cursor.
+        bool _forward;
+        // This means whether the cursor has reached the last EOF (with regard to this index).
+        bool atEOF;
+        // This means whether or not the last move was restore.
+        bool lastMoveWasRestore;
+        // This is the keystring for the saved location.
+        std::string saveKey;
+        // These are the same as before.
+        std::string _prefix;
+        std::string _postfix;
+        // These two store the iterator, which is the data structure for cursors. The one we use
+        // depends on _forward.
+        StringStore::iterator forwardIt;
+        StringStore::reverse_iterator reverseIt;
+        // This is the ordering for the key's values for multi-field keys.
+        Ordering _order;
+        // This is the keystring representation of the prefix/postfix.
+        std::string _postfixBSON;
+        std::string _prefixBSON;
+        // This stores whether or not the end position is inclusive for restore.
+        bool endPosIncl;
+        // This stores the key for the end position.
+        boost::optional<BSONObj> endPosKey;
+        // This stores whether or not the index is unique.
+        bool isUnique;
     };
+private:
+    const Ordering _order;
+    // These two are the same as before.
+    std::string _prefix;
+    std::string _postfix;
+    // These are the keystring representations of the _prefix and the _postfix.
+    std::string _prefixBSON;
+    std::string _postfixBSON;
+    // This stores whether or not the end position is inclusive.
+    bool isUnique;
+    // This stores whethert or not dups are allowed.
+    bool dupsAllowed;
 };
 }  // namespace biggie
 }  // namespace mongo
