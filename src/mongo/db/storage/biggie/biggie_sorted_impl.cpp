@@ -156,7 +156,7 @@ IndexKeyEntry keyStringToIndexKeyEntry(std::string keyString,
             const char* valStart = elem.valuestr();
             int valSize = elem.valuestrsize();
             KeyString ks(version);
-            ks.resetFromBuffer((void*)valStart, valSize);
+            ks.resetFromBuffer(valStart, valSize);
 
             BSONObj originalKey =
                 KeyString::toBsonSafe(ks.getBuffer(), ks.getSize(), order, tbInternal);
@@ -178,8 +178,7 @@ int compareTwoKeys(
     std::string ks1, std::string tbs1, std::string ks2, std::string tbs2, Ordering order) {
     size_t size1 = KeyString::sizeWithoutRecordIdAtEnd(ks1.c_str(), ks1.length());
     size_t size2 = KeyString::sizeWithoutRecordIdAtEnd(ks2.c_str(), ks2.length());
-    auto cmpSmallerMemory =
-        std::memcmp((void*)ks1.c_str(), (void*)ks2.c_str(), std::min(size1, size2));
+    auto cmpSmallerMemory = std::memcmp(ks1.c_str(), ks2.c_str(), std::min(size1, size2));
 
     if (cmpSmallerMemory != 0) {
         return cmpSmallerMemory;
@@ -197,10 +196,17 @@ SortedDataBuilderInterface::SortedDataBuilderInterface(OperationContext* opCtx,
                                                        Ordering order,
                                                        std::string prefix,
                                                        std::string postfix)
-    : opCtx(opCtx), dupsAllowed(dupsAllowed), order(order), prefix(prefix), postfix(postfix), hasLast(false), lastKeyToString(""), lastRID(-1){}
+    : opCtx(opCtx),
+      dupsAllowed(dupsAllowed),
+      order(order),
+      prefix(prefix),
+      postfix(postfix),
+      hasLast(false),
+      lastKeyToString(""),
+      lastRID(-1) {}
 
 void SortedDataBuilderInterface::commit(bool mayInterrupt) {
-    biggie::RecoveryUnit* ru = (biggie::RecoveryUnit*)opCtx->recoveryUnit();
+    biggie::RecoveryUnit* ru = checked_cast<biggie::RecoveryUnit*>(opCtx->recoveryUnit());
     ru->forkIfNeeded();
     ru->commitUnitOfWork();
 }
@@ -233,8 +239,9 @@ Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& lo
     std::unique_ptr<KeyString> workingCopyInternalKs = keyToKeyString(key, order);
     std::unique_ptr<KeyString> workingCopyOuterKs = combineKeyAndRIDKS(key, loc, prefix, order);
 
-    std::string internalTbString((char*)(workingCopyInternalKs->getTypeBits().getBuffer()),
-                    workingCopyInternalKs->getTypeBits().getSize());
+    std::string internalTbString(
+        reinterpret_cast<const char*>(workingCopyInternalKs->getTypeBits().getBuffer()),
+        workingCopyInternalKs->getTypeBits().getSize());
 
     workingCopy->insert(StringStore::value_type(workingCopyInsertKey, internalTbString));
 
@@ -291,7 +298,7 @@ Status SortedDataInterface::insert(OperationContext* opCtx,
     }
 
     std::string internalTbString =
-        std::string((char*)(workingCopyInternalKs->getTypeBits().getBuffer()),
+        std::string(reinterpret_cast<const char*>(workingCopyInternalKs->getTypeBits().getBuffer()),
                     workingCopyInternalKs->getTypeBits().getSize());
     workingCopy->insert(StringStore::value_type(workingCopyInsertKey, internalTbString));
     return Status::OK();
@@ -330,8 +337,13 @@ void SortedDataInterface::fullValidate(OperationContext* opCtx,
                                        long long* numKeysOut,
                                        ValidateResults* fullResults) const {
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    *numKeysOut = workingCopy->distance(workingCopy->lower_bound(_prefixBSON),
-                                        workingCopy->upper_bound(_postfixBSON));
+    long long numKeys = 0;
+    auto it = workingCopy->lower_bound(_prefixBSON);
+    while (it != workingCopy->end() && it->first.compare(_postfixBSON) < 0) {
+        it = ++it;
+        numKeys++;
+    }
+    *numKeysOut = numKeys;
 }
 
 bool SortedDataInterface::appendCustomStats(OperationContext* opCtx,
@@ -378,7 +390,8 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
                                     bool isUnique)
     : opCtx(opCtx),
       workingCopy(workingCopy),
-      endPos(boost::none), endPosReverse(boost::none),
+      endPos(boost::none),
+      endPosReverse(boost::none),
       endPosValid(false),
       _forward(isForward),
       atEOF(false),
@@ -389,8 +402,7 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
       reverseIt(workingCopy->rbegin()),
       _order(order),
       endPosIncl(false),
-      isUnique(isUnique)
-{
+      isUnique(isUnique) {
     _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _prefix, order);
     _postfixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _postfix, order);
 }

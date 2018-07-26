@@ -105,6 +105,7 @@ public:
         virtual void restore();
         virtual void detachFromOperationContext();
         virtual void reattachToOperationContext(OperationContext* opCtx);
+
     private:
         // This is a helper function for seek.
         boost::optional<IndexKeyEntry> seekAfterProcessing(BSONObj finalKey, bool inclusive);
@@ -143,6 +144,7 @@ public:
         // This stores whether or not the index is unique.
         bool isUnique;
     };
+
 private:
     const Ordering _order;
     // These two are the same as before.
