@@ -311,6 +311,13 @@ void SortedDataInterface::unindex(OperationContext* opCtx,
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     workingCopy->erase(workingCopyInsertKey);
 }
+Status SortedDataInterface::truncate(OperationContext* opCtx) {
+    StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
+    auto workingCopyLowerBound = workingCopy->lower_bound(_prefixBSON);
+    auto workingCopyUpperBound = workingCopy->upper_bound(_postfixBSON);
+    workingCopy->erase(workingCopyLowerBound, workingCopyUpperBound);
+    return Status::OK();
+}
 Status SortedDataInterface::dupKeyCheck(OperationContext* opCtx,
                                         const BSONObj& key,
                                         const RecordId& loc) {
