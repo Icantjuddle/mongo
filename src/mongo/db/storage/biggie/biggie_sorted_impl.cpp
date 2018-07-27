@@ -457,13 +457,14 @@ boost::optional<IndexKeyEntry> SortedDataInterface::Cursor::next(RequestedInfo p
                 atEOF = true;
                 return boost::none;
             }
-            if ((_forward && forwardIt->first.compare(_postfixBSON) >= 0) || (!_forward && reverseIt->first.compare(_prefixBSON) <= 0)) {
-                atEOF = true;
-                return boost::none;
-            }
         }
     } else {
         lastMoveWasRestore = false;
+        return boost::none;
+    }
+
+    if ((_forward && (forwardIt == workingCopy->end() || forwardIt->first.compare(_postfixBSON) >= 0)) || (!_forward && (reverseIt == workingCopy->rend() || reverseIt->first.compare(_prefixBSON) <= 0))) {
+        atEOF = true;
         return boost::none;
     }
 
