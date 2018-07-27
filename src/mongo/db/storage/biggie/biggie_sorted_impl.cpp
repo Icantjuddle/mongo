@@ -261,10 +261,10 @@ SortedDataBuilderInterface* SortedDataInterface::getBulkBuilder(OperationContext
 
 SortedDataInterface::SortedDataInterface(const Ordering& ordering, bool isUnique, StringData ident)
     : _order(ordering),
-      _prefix(ident.toString().append(1, '\0').append(1, '\1')),
-      _postfix(ident.toString().append(2, '\1')),
+      _prefix(ident.toString().append(1, '\1')),
+      _postfix(ident.toString().append(1, '\2')),
       isUnique(isUnique) {
-    _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), ident.toString().append(2, '\0'), ordering);
+    _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), ident.toString().append(1, '\0'), ordering);
     _postfixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _postfix, ordering);
 
     // start printing stuff here
@@ -415,7 +415,7 @@ std::unique_ptr<mongo::SortedDataInterface::Cursor> SortedDataInterface::newCurs
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
 
     return std::make_unique<SortedDataInterface::Cursor>(
-        opCtx, isForward, _prefix, _postfix, workingCopy, _order, isUnique);
+        opCtx, isForward, _prefix, _postfix, workingCopy, _order, isUnique, _prefixBSON, _postfixBSON);
 }
 Status SortedDataInterface::initAsEmpty(OperationContext* opCtx) {
     return Status::OK();
@@ -428,7 +428,9 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
                                     std::string _postfix,
                                     StringStore* workingCopy,
                                     Ordering order,
-                                    bool isUnique)
+                                    bool isUnique,
+                                    std::string prefixBSON,
+                                    std::string postfixBSON)
     : opCtx(opCtx),
       workingCopy(workingCopy),
       endPos(boost::none),
@@ -443,12 +445,9 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
       reverseIt(workingCopy->rbegin()),
       _order(order),
       endPosIncl(false),
-      isUnique(isUnique) {
-    std::string preFix = std::string(_prefix);
-    preFix[preFix.length() - 1] = '\0';
-    _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), preFix, order);
-    _postfixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _postfix, order);
-}
+      isUnique(isUnique),
+      _prefixBSON(prefixBSON),
+      _postfixBSON(postfixBSON){}
 
 void SortedDataInterface::Cursor::setEndPosition(const BSONObj& key, bool inclusive) {
     auto finalKey = stripFieldNames(key);

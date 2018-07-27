@@ -96,7 +96,9 @@ public:
                std::string _postfix,
                StringStore* workingCopy,
                Ordering order,
-               bool isUnique);
+               bool isUnique,
+               std::string prefixBSON,
+               std::string postfixBSON);
         virtual void setEndPosition(const BSONObj& key, bool inclusive) override;
         virtual boost::optional<IndexKeyEntry> next(RequestedInfo parts = kKeyAndLoc);
         virtual boost::optional<IndexKeyEntry> seek(const BSONObj& key,
@@ -137,15 +139,15 @@ public:
         StringStore::reverse_iterator reverseIt;
         // This is the ordering for the key's values for multi-field keys.
         Ordering _order;
-        // This is the keystring representation of the prefix/postfix.
-        std::string _postfixBSON;
-        std::string _prefixBSON;
         // This stores whether or not the end position is inclusive for restore.
         bool endPosIncl;
         // This stores the key for the end position.
         boost::optional<BSONObj> endPosKey;
         // This stores whether or not the index is unique.
         bool isUnique;
+        // The next two are the same as above.
+        std::string _prefixBSON;
+        std::string _postfixBSON;
     };
 
 private:
