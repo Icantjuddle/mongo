@@ -332,7 +332,9 @@ Status SortedDataInterface::dupKeyCheck(OperationContext* opCtx,
         auto lowerBoundIterator = workingCopy->lower_bound(workingCopyLowerBound);
 
         if (lowerBoundIterator != workingCopy->end() &&
-            lowerBoundIterator->first != workingCopyCheckKey) {
+            lowerBoundIterator->first != workingCopyCheckKey &&
+            lowerBoundIterator->first.compare(_postfixBSON) < 0 &&
+            lowerBoundIterator->first.compare(combineKeyAndRID(key, RecordId::max(), _prefix, _order)) <= 0) {
             return dupKeyError(key);
         }
     }
