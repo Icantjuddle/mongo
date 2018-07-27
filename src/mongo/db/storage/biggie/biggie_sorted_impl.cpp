@@ -43,6 +43,8 @@
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/shared_buffer.h"
 
+#include "mongo/util/hex.h"
+
 #include <cstring>
 #include <iomanip>
 #include <memory>
@@ -259,13 +261,45 @@ SortedDataBuilderInterface* SortedDataInterface::getBulkBuilder(OperationContext
 
 SortedDataInterface::SortedDataInterface(const Ordering& ordering, bool isUnique, StringData ident)
     : _order(ordering),
-      _prefix(ident.toString()),
-      // This is the end of the ident. The \0 ensures that the postfix is after all elements in
-      // this ident and before all elements in other idents that come afterwards.
-      _postfix(ident.toString().append(1, '\0')),
+      _prefix(ident.toString().append(1, '\0').append(1, '\1')),
+      _postfix(ident.toString().append(2, '\1')),
       isUnique(isUnique) {
-    _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _prefix, ordering);
+    _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), ident.toString().append(2, '\0'), ordering);
     _postfixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _postfix, ordering);
+
+    // start printing stuff here
+    //
+
+    /*
+
+    std::string ident1 = "index-6--8250259195595751598";
+    std::string ident2 = "index-8--8250259195595751598";
+
+    std::string _prefix1 = std::string(ident1).append(1, '\1');
+    std::string _prefix2 = std::string(ident2).append(1, '\1');
+    std::string _postfix1 = std::string(ident1).append(1, '\2');
+    std::string _postfix2 = std::string(ident2).append(1, '\2');
+
+    std::string _prefixBSON1 = combineKeyAndRID(BSONObj(), RecordId::min(), std::string(ident1).append(1, '\0'), ordering);
+    std::string _prefixBSON2 = combineKeyAndRID(BSONObj(), RecordId::min(), std::string(ident2).append(1, '\0'), ordering);
+    std::string _postfixBSON1 = combineKeyAndRID(BSONObj(), RecordId::max(), _postfix1, ordering);
+    std::string _postfixBSON2 = combineKeyAndRID(BSONObj(), RecordId::max(), _postfix2, ordering);
+
+    std::string _prefixInsertSample1 = combineKeyAndRID(BSONObj(), RecordId(1), _prefix1,  ordering);
+    std::string _prefixInsertSample2 = combineKeyAndRID(BSONObj(), RecordId(1), _prefix2,  ordering);
+
+
+    log() << "Ident:" << ident1 << "\n\n";
+    log() << "PrefixBSON:" << toHex(_prefixBSON1.c_str(), _prefixBSON1.length()) << "\n\n";
+    log() << "Prefix use:" << toHex(_prefixInsertSample1.c_str(), _prefixInsertSample1.length()) << "\n\n";
+    log() << "postfixBSON:" << toHex(_postfixBSON1.c_str(), _postfixBSON1.length()) << "\n\n";
+
+    log() << "Ident:" << ident2 << "\n\n";
+    log() << "PrefixBSON:" << toHex(_prefixBSON2.c_str(), _prefixBSON2.length()) << "\n\n";
+    log() << "Prefix use:" << toHex(_prefixInsertSample2.c_str(), _prefixInsertSample2.length()) << "\n\n";
+    log() << "postfixBSON:" << toHex(_postfixBSON2.c_str(), _postfixBSON2.length()) << "\n\n";
+
+    */
 }
 
 Status SortedDataInterface::insert(OperationContext* opCtx,
@@ -410,7 +444,9 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
       _order(order),
       endPosIncl(false),
       isUnique(isUnique) {
-    _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _prefix, order);
+    std::string preFix = std::string(_prefix);
+    preFix[preFix.length() - 1] = '\0';
+    _prefixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), preFix, order);
     _postfixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _postfix, order);
 }
 
