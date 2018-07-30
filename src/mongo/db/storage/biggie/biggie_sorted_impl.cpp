@@ -213,48 +213,48 @@ SortedDataBuilderInterface::SortedDataBuilderInterface(OperationContext* opCtx,
                                                        Ordering order,
                                                        std::string prefix,
                                                        std::string postfix)
-    : opCtx(opCtx),
-      dupsAllowed(dupsAllowed),
-      order(order),
-      prefix(prefix),
-      postfix(postfix),
-      hasLast(false),
-      lastKeyToString(""),
-      lastRID(-1) {}
+    : _opCtx(opCtx),
+      _dupsAllowed(dupsAllowed),
+      _order(order),
+      _prefix(prefix),
+      _postfix(postfix),
+      _hasLast(false),
+      _lastKeyToString(""),
+      _lastRID(-1) {}
 
 void SortedDataBuilderInterface::commit(bool mayInterrupt) {
-    biggie::RecoveryUnit* ru = checked_cast<biggie::RecoveryUnit*>(opCtx->recoveryUnit());
+    biggie::RecoveryUnit* ru = checked_cast<biggie::RecoveryUnit*>(_opCtx->recoveryUnit());
     ru->forkIfNeeded();
     ru->commitUnitOfWork();
 }
 
 Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& loc) {
-    StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
+    StringStore* workingCopy = getRecoveryUnitBranch_forking(_opCtx);
 
     invariant(loc.isNormal());
 
-    std::unique_ptr<KeyString> newKS = keyToKeyString(key, order);
+    std::unique_ptr<KeyString> newKS = keyToKeyString(key, _order);
     std::string newKSToString = std::string(newKS->getBuffer(), newKS->getSize());
 
     int twoKeyCmp = 1;
     int twoRIDCmp = 1;
 
-    if (hasLast) {
-        twoKeyCmp = newKSToString.compare(lastKeyToString);
-        twoRIDCmp = loc.repr() - lastRID;
+    if (_hasLast) {
+        twoKeyCmp = newKSToString.compare(_lastKeyToString);
+        twoRIDCmp = loc.repr() - _lastRID;
     }
 
-    if (twoKeyCmp < 0 || (dupsAllowed && twoKeyCmp == 0 && twoRIDCmp < 0)) {
+    if (twoKeyCmp < 0 || (_dupsAllowed && twoKeyCmp == 0 && twoRIDCmp < 0)) {
         return Status(ErrorCodes::InternalError,
                       "expected ascending (key, RecordId) order in bulk builder");
     }
-    if (!dupsAllowed && twoKeyCmp == 0 && twoRIDCmp != 0) {
+    if (!_dupsAllowed && twoKeyCmp == 0 && twoRIDCmp != 0) {
         return dupKeyError(key);
     }
 
-    std::string workingCopyInsertKey = combineKeyAndRID(key, loc, prefix, order);
-    std::unique_ptr<KeyString> workingCopyInternalKs = keyToKeyString(key, order);
-    std::unique_ptr<KeyString> workingCopyOuterKs = combineKeyAndRIDKS(key, loc, prefix, order);
+    std::string workingCopyInsertKey = combineKeyAndRID(key, loc, _prefix, _order);
+    std::unique_ptr<KeyString> workingCopyInternalKs = keyToKeyString(key, _order);
+    std::unique_ptr<KeyString> workingCopyOuterKs = combineKeyAndRIDKS(key, loc, _prefix, _order);
 
     std::string internalTbString(
         reinterpret_cast<const char*>(workingCopyInternalKs->getTypeBits().getBuffer()),
@@ -262,9 +262,9 @@ Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& lo
 
     workingCopy->insert(StringStore::value_type(workingCopyInsertKey, internalTbString));
 
-    hasLast = true;
-    lastKeyToString = newKSToString;
-    lastRID = loc.repr();
+    _hasLast = true;
+    _lastKeyToString = newKSToString;
+    _lastRID = loc.repr();
 
     return Status::OK();
 }
@@ -283,7 +283,7 @@ SortedDataInterface::SortedDataInterface(const Ordering& ordering, bool isUnique
       _prefix(ident.toString().append(1, '\1')),
       // Therefore, the string ident + \2 will be greater than all elements in this ident.
       _postfix(ident.toString().append(1, '\2')),
-      isUnique(isUnique) {
+      _isUnique(isUnique) {
     // This is the string representation of the KeyString before elements in this ident, which is
     // ident + \0. This is before all elements in this ident.
     _prefixBSON =
@@ -317,7 +317,6 @@ Status SortedDataInterface::insert(OperationContext* opCtx,
         std::string workingCopyLowerBound = combineKeyAndRID(key, RecordId::min(), _prefix, _order);
         std::string workingCopyUpperBound = combineKeyAndRID(key, RecordId::max(), _prefix, _order);
         StringStore::iterator lowerBoundIterator = workingCopy->lower_bound(workingCopyLowerBound);
-        StringStore::iterator upperBoundIterator = workingCopy->upper_bound(workingCopyUpperBound);
 
         if (lowerBoundIterator != workingCopy->end()) {
             IndexKeyEntry ike = keyStringToIndexKeyEntry(
@@ -369,7 +368,7 @@ Status SortedDataInterface::dupKeyCheck(OperationContext* opCtx,
         return Status::OK();
     }
 
-    if (!dupsAllowed) {
+    if (!_dupsAllowed) {
         std::string workingCopyLowerBound = combineKeyAndRID(key, RecordId::min(), _prefix, _order);
         auto lowerBoundIterator = workingCopy->lower_bound(workingCopyLowerBound);
 
@@ -432,7 +431,7 @@ std::unique_ptr<mongo::SortedDataInterface::Cursor> SortedDataInterface::newCurs
                                                          _postfix,
                                                          workingCopy,
                                                          _order,
-                                                         isUnique,
+                                                         _isUnique,
                                                          _prefixBSON,
                                                          _postfixBSON);
 }
@@ -451,95 +450,116 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
                                     bool isUnique,
                                     std::string prefixBSON,
                                     std::string postfixBSON)
-    : opCtx(opCtx),
-      workingCopy(workingCopy),
-      endPos(boost::none),
-      endPosReverse(boost::none),
-      endPosValid(false),
+    : _opCtx(opCtx),
+      _workingCopy(workingCopy),
+      _endPos(boost::none),
+      _endPosReverse(boost::none),
+      _endPosValid(false),
       _forward(isForward),
-      atEOF(false),
-      lastMoveWasRestore(false),
+      _atEOF(false),
+      _lastMoveWasRestore(false),
       _prefix(_prefix),
       _postfix(_postfix),
-      forwardIt(workingCopy->begin()),
-      reverseIt(workingCopy->rbegin()),
+      _forwardIt(workingCopy->begin()),
+      _reverseIt(workingCopy->rbegin()),
       _order(order),
-      endPosIncl(false),
-      isUnique(isUnique),
+      _endPosIncl(false),
+      _isUnique(isUnique),
       _prefixBSON(prefixBSON),
       _postfixBSON(postfixBSON) {}
 
+// This function checks whether or not a cursor is valid. In particular, it checks 1) whether the
+// cursor is at end() or rend(), 2) whether the cursor is on the wrong side of the end position
+// if it was set, and 3) whether the cursor is still in the ident.
+bool SortedDataInterface::Cursor::checkCursorValid() {
+    if (_forward) {
+        if (_forwardIt == _workingCopy->end()) {
+            return false;
+        }
+        if (_endPosValid) {
+            // The endPos must be in the ident, at most one past the ident, or end. Therefore, the
+            // endPos includes the check for being inside the ident
+            return _endPos.get() == _workingCopy->end() ||
+                _forwardIt->first.compare(_endPos.get()->first) < 0;
+        }
+        return _forwardIt->first.compare(_postfixBSON) <= 0;
+    } else {
+        // This is a reverse cursor
+        if (_reverseIt == _workingCopy->rend()) {
+            return false;
+        }
+        if (_endPosValid) {
+            return _endPosReverse.get() == _workingCopy->rend() ||
+                _reverseIt->first.compare(_endPosReverse.get()->first) > 0;
+        }
+        return _reverseIt->first.compare(_prefixBSON) >= 0;
+    }
+}
+
 void SortedDataInterface::Cursor::setEndPosition(const BSONObj& key, bool inclusive) {
     auto finalKey = stripFieldNames(key);
-    StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
+    StringStore* workingCopy = getRecoveryUnitBranch_forking(_opCtx);
     if (finalKey.isEmpty()) {
-        endPosValid = false;
-        endPos = boost::none;
+        _endPosValid = false;
+        _endPos = boost::none;
         return;
     }
-    endPosValid = true;
-    endPosIncl = inclusive;
-    endPosKey = key;
-    std::string endPosBound;
+    _endPosValid = true;
+    _endPosIncl = inclusive;
+    _endPosKey = key;
+    std::string _endPosBound;
     // If forward and inclusive or reverse and not inclusive, then we use the last element in this
     // ident. Otherwise, we use the first as our bound.
     if (_forward == inclusive) {
-        endPosBound = combineKeyAndRID(finalKey, RecordId::max(), _prefix, _order);
+        _endPosBound = combineKeyAndRID(finalKey, RecordId::max(), _prefix, _order);
     } else {
-        endPosBound = combineKeyAndRID(finalKey, RecordId::min(), _prefix, _order);
+        _endPosBound = combineKeyAndRID(finalKey, RecordId::min(), _prefix, _order);
     }
     if (_forward) {
-        endPos = workingCopy->lower_bound(endPosBound);
+        _endPos = workingCopy->lower_bound(_endPosBound);
     } else {
         // Reverse iterators work with upper bound since upper bound will return the first element
         // past the argument, so when it becomes a reverse iterator, it goes backwards one,
         // (according to the C++ standard) and we end up in the right place.
-        endPosReverse = StringStore::reverse_iterator(workingCopy->upper_bound(endPosBound));
+        _endPosReverse = StringStore::reverse_iterator(workingCopy->upper_bound(_endPosBound));
     }
 }
 
 boost::optional<IndexKeyEntry> SortedDataInterface::Cursor::next(RequestedInfo parts) {
-    if (!atEOF) {
+    if (!_atEOF) {
         // If the last move was restore, then we don't need to advance the cursor, since the user
         // never got the value the cursor was pointing to in the first place. However,
-        // lastMoveWasRestore will go through extra logic on a unique index, since unique indexes
+        // _lastMoveWasRestore will go through extra logic on a unique index, since unique indexes
         // are not allowed to return the same key twice.
-        if (lastMoveWasRestore) {
-            lastMoveWasRestore = false;
+        if (_lastMoveWasRestore) {
+            _lastMoveWasRestore = false;
         } else {
-            // We basically just check to make sure next is in the ident.
-            if (_forward && forwardIt != workingCopy->end()) {
-                ++forwardIt;
-            } else if (reverseIt != workingCopy->rend()) {
-                ++reverseIt;
+            // We basically just check to make sure the cursor is in the ident.
+            if (_forward) {
+                if (checkCursorValid()) {
+                    ++_forwardIt;
+                }
+            } else {
+                if (checkCursorValid()) {
+                    ++_reverseIt;
+                }
             }
-            // We check here to make sure that we are on the correct side of the end position.
-            if ((!_forward && (reverseIt == workingCopy->rend() ||
-                               (endPosValid && reverseIt->first == endPosReverse.get()->first))) ||
-                (_forward && (forwardIt == workingCopy->end() ||
-                              (endPosValid && forwardIt->first == endPos.get()->first)))) {
-                atEOF = true;
+            // We check here to make sure that we are on the correct side of the end position, and
+            // that the cursor is still in the ident after advancing.
+            if (!checkCursorValid()) {
+                _atEOF = true;
                 return boost::none;
             }
         }
     } else {
-        lastMoveWasRestore = false;
-        return boost::none;
-    }
-
-    // Here, we check to make sure the iterator is in the ident.
-    if ((_forward &&
-         (forwardIt == workingCopy->end() || forwardIt->first.compare(_postfixBSON) >= 0)) ||
-        (!_forward &&
-         (reverseIt == workingCopy->rend() || reverseIt->first.compare(_prefixBSON) <= 0))) {
-        atEOF = true;
+        _lastMoveWasRestore = false;
         return boost::none;
     }
 
     if (_forward) {
-        return keyStringToIndexKeyEntry(forwardIt->first, forwardIt->second, _order);
+        return keyStringToIndexKeyEntry(_forwardIt->first, _forwardIt->second, _order);
     }
-    return keyStringToIndexKeyEntry(reverseIt->first, reverseIt->second, _order);
+    return keyStringToIndexKeyEntry(_reverseIt->first, _reverseIt->second, _order);
 }
 
 boost::optional<IndexKeyEntry> SortedDataInterface::Cursor::seekAfterProcessing(BSONObj finalKey,
@@ -557,74 +577,59 @@ boost::optional<IndexKeyEntry> SortedDataInterface::Cursor::seekAfterProcessing(
     if (finalKey.isEmpty()) {
         // If the key is empty and it's not inclusive, then no elements satisfy this seek.
         if (!inclusive) {
-            atEOF = true;
+            _atEOF = true;
             return boost::none;
         } else {
             // Otherwise, we just try to find the first element in this ident.
             if (_forward) {
-                forwardIt = workingCopy->lower_bound(workingCopyBound);
+                _forwardIt = _workingCopy->lower_bound(workingCopyBound);
             } else {
 
                 // Reverse iterators work with upper bound since upper bound will return the first
                 // element past the argument, so when it becomes a reverse iterator, it goes
                 // backwards one, (according to the C++ standard) and we end up in the right place.
-                reverseIt =
-                    StringStore::reverse_iterator(workingCopy->upper_bound(workingCopyBound));
+                _reverseIt =
+                    StringStore::reverse_iterator(_workingCopy->upper_bound(workingCopyBound));
             }
             // Here, we check to make sure the iterator doesn't fall off the data structure and is
             // in the ident. We also check to make sure it is on the correct side of the end
             // position, if it was set.
-            if (((_forward && (forwardIt == workingCopy->end() ||
-                               forwardIt->first.compare(_postfixBSON) > 0)) ||
-                 (!_forward && (reverseIt == workingCopy->rend() ||
-                                reverseIt->first.compare(_prefixBSON) < 0))) ||
-                (endPosValid && ((_forward && endPos.get() != workingCopy->end() &&
-                                  forwardIt->first.compare(endPos.get()->first) >= 0) ||
-                                 (!_forward && endPosReverse.get() != workingCopy->rend() &&
-                                  reverseIt->first.compare(endPos.get()->first) <= 0)))) {
-                atEOF = true;
+            if (!checkCursorValid()) {
+                _atEOF = true;
                 return boost::none;
             }
         }
     } else {
         // Otherwise, we seek to the nearest element to our key, but only to the right.
         if (_forward) {
-            forwardIt = workingCopy->lower_bound(workingCopyBound);
+            _forwardIt = _workingCopy->lower_bound(workingCopyBound);
         } else {
             // Reverse iterators work with upper bound since upper bound will return the first
             // element past the argument, so when it becomes a reverse iterator, it goes
             // backwards one, (according to the C++ standard) and we end up in the right place.
-            reverseIt = StringStore::reverse_iterator(workingCopy->upper_bound(workingCopyBound));
+            _reverseIt = StringStore::reverse_iterator(_workingCopy->upper_bound(workingCopyBound));
         }
         // Once again, we check to make sure the iterator didn't fall off the data structure and
         // still is in the ident.
-        if (((_forward &&
-              ((forwardIt == workingCopy->end() || forwardIt->first.compare(_postfixBSON) > 0) ||
-               (endPosValid && endPos.get() != workingCopy->end() &&
-                forwardIt->first.compare(endPos.get()->first) >= 0)))) ||
-            ((!_forward &&
-              ((reverseIt == workingCopy->rend() || reverseIt->first.compare(_prefixBSON) < 0) ||
-               (endPosValid && endPosReverse.get() != workingCopy->rend() &&
-                reverseIt->first.compare(endPosReverse.get()->first) <= 0))) ||
-             false)) {
-            atEOF = true;
+        if (!checkCursorValid()) {
+            _atEOF = true;
             return boost::none;
         }
     }
 
     // Everything checks out, so we have successfullly seeked and now return.
     if (_forward) {
-        return keyStringToIndexKeyEntry(forwardIt->first, forwardIt->second, _order);
+        return keyStringToIndexKeyEntry(_forwardIt->first, _forwardIt->second, _order);
     }
-    return keyStringToIndexKeyEntry(reverseIt->first, reverseIt->second, _order);
+    return keyStringToIndexKeyEntry(_reverseIt->first, _reverseIt->second, _order);
 }
 
 boost::optional<IndexKeyEntry> SortedDataInterface::Cursor::seek(const BSONObj& key,
                                                                  bool inclusive,
                                                                  RequestedInfo parts) {
     BSONObj finalKey = stripFieldNames(key);
-    lastMoveWasRestore = false;
-    atEOF = false;
+    _lastMoveWasRestore = false;
+    _atEOF = false;
 
     return seekAfterProcessing(finalKey, inclusive);
 }
@@ -632,97 +637,93 @@ boost::optional<IndexKeyEntry> SortedDataInterface::Cursor::seek(const BSONObj& 
 boost::optional<IndexKeyEntry> SortedDataInterface::Cursor::seek(const IndexSeekPoint& seekPoint,
                                                                  RequestedInfo parts) {
     const BSONObj key = IndexEntryComparison::makeQueryObject(seekPoint, _forward);
-    atEOF = false;
+    _atEOF = false;
     bool inclusive = true;
     BSONObj finalKey = key;
-    lastMoveWasRestore = false;
+    _lastMoveWasRestore = false;
 
     return seekAfterProcessing(finalKey, inclusive);
 }
 
 void SortedDataInterface::Cursor::save() {
-    atEOF = false;
-    if (lastMoveWasRestore) {
+    _atEOF = false;
+    if (_lastMoveWasRestore) {
         return;
-    } else if (_forward && forwardIt != workingCopy->end()) {
-        saveKey = forwardIt->first, forwardIt->second;
-    } else if (!_forward && reverseIt != workingCopy->rend()) {  // reverse
-        saveKey = reverseIt->first, reverseIt->second;
+    } else if (_forward && _forwardIt != _workingCopy->end()) {
+        _saveKey = _forwardIt->first;
+    } else if (!_forward && _reverseIt != _workingCopy->rend()) {  // reverse
+        _saveKey = _reverseIt->first;
     } else {
-        saveKey = "";
+        _saveKey = "";
     }
 }
 
 void SortedDataInterface::Cursor::restore() {
-    StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
+    StringStore* workingCopy = getRecoveryUnitBranch_forking(_opCtx);
 
-    this->workingCopy = workingCopy;
+    this->_workingCopy = workingCopy;
 
     // Here, we have to reset the end position if one was set earlier.
-    if (endPosValid) {
-        setEndPosition(endPosKey.get(), endPosIncl);
+    if (_endPosValid) {
+        setEndPosition(_endPosKey.get(), _endPosIncl);
     }
 
     // We reset the cursor, and make sure it's within the end position bounds. It doesn't matter if
     // the cursor is not in the ident right now, since that will be taken care of upon the call to
     // next().
     if (_forward) {
-        if (saveKey.length() == 0) {
-            forwardIt = workingCopy->end();
+        if (_saveKey.length() == 0) {
+            _forwardIt = workingCopy->end();
         } else {
-            forwardIt = workingCopy->lower_bound(saveKey);
+            _forwardIt = workingCopy->lower_bound(_saveKey);
         }
-        if ((forwardIt == workingCopy->end()) ||
-            ((endPosValid && endPos.get() != workingCopy->end()) &&
-             (forwardIt->first.compare(endPos.get()->first) >= 0))) {
-            atEOF = true;
-            lastMoveWasRestore = true;
+        if (!checkCursorValid()) {
+            _atEOF = true;
+            _lastMoveWasRestore = true;
             return;
         }
 
-        if (!isUnique) {
-            lastMoveWasRestore = (forwardIt->first.compare(saveKey) != 0);
+        if (!_isUnique) {
+            _lastMoveWasRestore = (_forwardIt->first.compare(_saveKey) != 0);
         } else {
             // Unique indices cannot return the same key twice. Therefore, if we would normally not
-            // advance on the next call to next() by setting lastMoveWasRestore, we potentially
+            // advance on the next call to next() by setting _lastMoveWasRestore, we potentially
             // won't set it if that would cause us to return the same value twice.
             int twoKeyCmp = compareTwoKeys(
-                forwardIt->first, forwardIt->second, saveKey, forwardIt->second, _order);
-            lastMoveWasRestore = (twoKeyCmp != 0);
+                _forwardIt->first, _forwardIt->second, _saveKey, _forwardIt->second, _order);
+            _lastMoveWasRestore = (twoKeyCmp != 0);
         }
 
     } else {
         // Now we are dealing with reverse cursors, and use similar logic.
-        if (saveKey.length() == 0) {
-            reverseIt = workingCopy->rend();
+        if (_saveKey.length() == 0) {
+            _reverseIt = workingCopy->rend();
         } else {
-            reverseIt = StringStore::reverse_iterator(workingCopy->upper_bound(saveKey));
+            _reverseIt = StringStore::reverse_iterator(workingCopy->upper_bound(_saveKey));
         }
-        if ((reverseIt == workingCopy->rend()) ||
-            ((endPosValid && endPosReverse.get() != workingCopy->rend()) &&
-             (reverseIt->first.compare(endPosReverse.get()->first) <= 0))) {
-            atEOF = true;
-            lastMoveWasRestore = true;
+        if (!checkCursorValid()) {
+            _atEOF = true;
+            _lastMoveWasRestore = true;
             return;
         }
 
-        if (!isUnique) {
-            lastMoveWasRestore = (reverseIt->first.compare(saveKey) != 0);
+        if (!_isUnique) {
+            _lastMoveWasRestore = (_reverseIt->first.compare(_saveKey) != 0);
         } else {
             // We use similar logic for reverse cursors on unique indexes.
             int twoKeyCmp = compareTwoKeys(
-                reverseIt->first, reverseIt->second, saveKey, reverseIt->second, _order);
-            lastMoveWasRestore = (twoKeyCmp != 0);
+                _reverseIt->first, _reverseIt->second, _saveKey, _reverseIt->second, _order);
+            _lastMoveWasRestore = (twoKeyCmp != 0);
         }
     }
 }
 
 void SortedDataInterface::Cursor::detachFromOperationContext() {
-    opCtx = nullptr;
+    _opCtx = nullptr;
 }
 
 void SortedDataInterface::Cursor::reattachToOperationContext(OperationContext* opCtx) {
-    this->opCtx = opCtx;
+    this->_opCtx = opCtx;
 }
 }  // namespace biggie
 }  // namespace mongo
