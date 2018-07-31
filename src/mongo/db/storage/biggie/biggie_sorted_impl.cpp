@@ -55,6 +55,8 @@ namespace mongo {
 namespace biggie {
 namespace {
 
+const int TempKeyMaxSize = 1024;  // this goes away with SERVER-3372
+
 // This function is the same as the one in record store--basically, using the git analogy, create
 // a working branch if one does not exist.
 StringStore* getRecoveryUnitBranch_forking(OperationContext* opCtx) {
@@ -62,6 +64,15 @@ StringStore* getRecoveryUnitBranch_forking(OperationContext* opCtx) {
     invariant(biggieRCU);
     biggieRCU->forkIfNeeded();
     return biggieRCU->getWorkingCopy();
+}
+
+// This just checks to see if the field names are empty or not.
+bool hasFieldNames(const BSONObj& obj) {
+    BSONForEach(e, obj) {
+        if (e.fieldName()[0])
+            return true;
+    }
+    return false;
 }
 
 // This just makes all the fields in a BSON object equal to "".
@@ -231,7 +242,12 @@ void SortedDataBuilderInterface::commit(bool mayInterrupt) {
 Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& loc) {
     StringStore* workingCopy = getRecoveryUnitBranch_forking(_opCtx);
 
+    if (key.objsize() >= TempKeyMaxSize) {
+        return Status(ErrorCodes::KeyTooLong, "key too big");
+    }
+
     invariant(loc.isNormal());
+    invariant(!hasFieldNames(key));
 
     std::unique_ptr<KeyString> newKS = keyToKeyString(key, _order);
     std::string newKSToString = std::string(newKS->getBuffer(), newKS->getSize());
@@ -305,6 +321,10 @@ Status SortedDataInterface::insert(OperationContext* opCtx,
     std::string workingCopyInsertKey = combineKeyAndRID(key, loc, _prefix, _order);
 
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
+
+    if (key.objsize() >= TempKeyMaxSize) {
+        return Status(ErrorCodes::KeyTooLong, "Error: key too long");
+    }
 
     if (workingCopy->find(workingCopyInsertKey) != workingCopy->end()) {
         return Status::OK();
