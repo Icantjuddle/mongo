@@ -318,7 +318,8 @@ Status SortedDataInterface::insert(OperationContext* opCtx,
         std::string workingCopyUpperBound = combineKeyAndRID(key, RecordId::max(), _prefix, _order);
         StringStore::iterator lowerBoundIterator = workingCopy->lower_bound(workingCopyLowerBound);
 
-        if (lowerBoundIterator != workingCopy->end()) {
+        if (lowerBoundIterator != workingCopy->end() &&
+            lowerBoundIterator->first.compare(_KSForIdentEnd) < 0) {
             IndexKeyEntry ike = keyStringToIndexKeyEntry(
                 lowerBoundIterator->first, lowerBoundIterator->second, _order);
             if (ike.key.toString() == key.toString() && ike.loc.repr() != loc.repr()) {
