@@ -212,12 +212,12 @@ SortedDataBuilderInterface::SortedDataBuilderInterface(OperationContext* opCtx,
                                                        bool dupsAllowed,
                                                        Ordering order,
                                                        std::string prefix,
-                                                       std::string postfix)
+                                                       std::string identEnd)
     : _opCtx(opCtx),
       _dupsAllowed(dupsAllowed),
       _order(order),
       _prefix(prefix),
-      _postfix(postfix),
+      _identEnd(identEnd),
       _hasLast(false),
       _lastKeyToString(""),
       _lastRID(-1) {}
@@ -271,7 +271,7 @@ Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& lo
 
 SortedDataBuilderInterface* SortedDataInterface::getBulkBuilder(OperationContext* opCtx,
                                                                 bool dupsAllowed) {
-    return new SortedDataBuilderInterface(opCtx, dupsAllowed, _order, _prefix, _postfix);
+    return new SortedDataBuilderInterface(opCtx, dupsAllowed, _order, _prefix, _identEnd);
 }
 
 // We append \1 to all idents we get, and therefore the KeyString with ident + \0 will only be
@@ -282,15 +282,15 @@ SortedDataInterface::SortedDataInterface(const Ordering& ordering, bool isUnique
       // All entries in this ident will have a prefix of ident + \1.
       _prefix(ident.toString().append(1, '\1')),
       // Therefore, the string ident + \2 will be greater than all elements in this ident.
-      _postfix(ident.toString().append(1, '\2')),
+      _identEnd(ident.toString().append(1, '\2')),
       _isUnique(isUnique) {
     // This is the string representation of the KeyString before elements in this ident, which is
     // ident + \0. This is before all elements in this ident.
-    _prefixBSON =
+    _KSForIdentStart =
         combineKeyAndRID(BSONObj(), RecordId::min(), ident.toString().append(1, '\0'), ordering);
     // Similarly, this is the string representation of the KeyString for something greater than
     // all other elements in this ident.
-    _postfixBSON = combineKeyAndRID(BSONObj(), RecordId::min(), _postfix, ordering);
+    _KSForIdentEnd = combineKeyAndRID(BSONObj(), RecordId::min(), _identEnd, ordering);
 }
 
 Status SortedDataInterface::insert(OperationContext* opCtx,
@@ -350,8 +350,8 @@ void SortedDataInterface::unindex(OperationContext* opCtx,
 // truncate to the list of commands able to be used.
 Status SortedDataInterface::truncate(OperationContext* opCtx) {
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    auto workingCopyLowerBound = workingCopy->lower_bound(_prefixBSON);
-    auto workingCopyUpperBound = workingCopy->upper_bound(_postfixBSON);
+    auto workingCopyLowerBound = workingCopy->lower_bound(_KSForIdentStart);
+    auto workingCopyUpperBound = workingCopy->upper_bound(_KSForIdentEnd);
     workingCopy->erase(workingCopyLowerBound, workingCopyUpperBound);
     return Status::OK();
 }
@@ -374,7 +374,7 @@ Status SortedDataInterface::dupKeyCheck(OperationContext* opCtx,
 
         if (lowerBoundIterator != workingCopy->end() &&
             lowerBoundIterator->first != workingCopyCheckKey &&
-            lowerBoundIterator->first.compare(_postfixBSON) < 0 &&
+            lowerBoundIterator->first.compare(_KSForIdentEnd) < 0 &&
             lowerBoundIterator->first.compare(
                 combineKeyAndRID(key, RecordId::max(), _prefix, _order)) <= 0) {
             return dupKeyError(key);
@@ -388,8 +388,8 @@ void SortedDataInterface::fullValidate(OperationContext* opCtx,
                                        ValidateResults* fullResults) const {
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     long long numKeys = 0;
-    auto it = workingCopy->lower_bound(_prefixBSON);
-    while (it != workingCopy->end() && it->first.compare(_postfixBSON) < 0) {
+    auto it = workingCopy->lower_bound(_KSForIdentStart);
+    while (it != workingCopy->end() && it->first.compare(_KSForIdentEnd) < 0) {
         ++it;
         numKeys++;
     }
@@ -405,8 +405,8 @@ bool SortedDataInterface::appendCustomStats(OperationContext* opCtx,
 long long SortedDataInterface::getSpaceUsedBytes(OperationContext* opCtx) const {
     StringStore* str = getRecoveryUnitBranch_forking(opCtx);
     size_t totalSize = 0;
-    StringStore::iterator it = str->lower_bound(_prefixBSON);
-    StringStore::iterator end = str->upper_bound(_postfixBSON);
+    StringStore::iterator it = str->lower_bound(_KSForIdentStart);
+    StringStore::iterator end = str->upper_bound(_KSForIdentEnd);
     int64_t numElements = str->distance(it, end);
     for (int i = 0; i < numElements; i++) {
         totalSize += it->first.length();
@@ -417,8 +417,8 @@ long long SortedDataInterface::getSpaceUsedBytes(OperationContext* opCtx) const 
 
 bool SortedDataInterface::isEmpty(OperationContext* opCtx) {
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    return workingCopy->distance(workingCopy->lower_bound(_prefixBSON),
-                                 workingCopy->upper_bound(_postfixBSON)) == 0;
+    return workingCopy->distance(workingCopy->lower_bound(_KSForIdentStart),
+                                 workingCopy->upper_bound(_KSForIdentEnd)) == 0;
 }
 
 std::unique_ptr<mongo::SortedDataInterface::Cursor> SortedDataInterface::newCursor(
@@ -428,12 +428,12 @@ std::unique_ptr<mongo::SortedDataInterface::Cursor> SortedDataInterface::newCurs
     return std::make_unique<SortedDataInterface::Cursor>(opCtx,
                                                          isForward,
                                                          _prefix,
-                                                         _postfix,
+                                                         _identEnd,
                                                          workingCopy,
                                                          _order,
                                                          _isUnique,
-                                                         _prefixBSON,
-                                                         _postfixBSON);
+                                                         _KSForIdentStart,
+                                                         _KSForIdentEnd);
 }
 
 Status SortedDataInterface::initAsEmpty(OperationContext* opCtx) {
@@ -444,12 +444,12 @@ Status SortedDataInterface::initAsEmpty(OperationContext* opCtx) {
 SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
                                     bool isForward,
                                     std::string _prefix,
-                                    std::string _postfix,
+                                    std::string _identEnd,
                                     StringStore* workingCopy,
                                     Ordering order,
                                     bool isUnique,
-                                    std::string prefixBSON,
-                                    std::string postfixBSON)
+                                    std::string _KSForIdentStart,
+                                    std::string identEndBSON)
     : _opCtx(opCtx),
       _workingCopy(workingCopy),
       _endPos(boost::none),
@@ -458,14 +458,14 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
       _atEOF(false),
       _lastMoveWasRestore(false),
       _prefix(_prefix),
-      _postfix(_postfix),
+      _identEnd(_identEnd),
       _forwardIt(workingCopy->begin()),
       _reverseIt(workingCopy->rbegin()),
       _order(order),
       _endPosIncl(false),
       _isUnique(isUnique),
-      _prefixBSON(prefixBSON),
-      _postfixBSON(postfixBSON) {}
+      _KSForIdentStart(_KSForIdentStart),
+      _KSForIdentEnd(identEndBSON) {}
 
 // This function checks whether or not the cursor end position was set by the user or not.
 bool SortedDataInterface::Cursor::endPosSet() {
@@ -486,7 +486,7 @@ bool SortedDataInterface::Cursor::checkCursorValid() {
             return _endPos.get() == _workingCopy->end() ||
                 _forwardIt->first.compare(_endPos.get()->first) < 0;
         }
-        return _forwardIt->first.compare(_postfixBSON) <= 0;
+        return _forwardIt->first.compare(_KSForIdentEnd) <= 0;
     } else {
         // This is a reverse cursor
         if (_reverseIt == _workingCopy->rend()) {
@@ -496,7 +496,7 @@ bool SortedDataInterface::Cursor::checkCursorValid() {
             return _endPosReverse.get() == _workingCopy->rend() ||
                 _reverseIt->first.compare(_endPosReverse.get()->first) > 0;
         }
-        return _reverseIt->first.compare(_prefixBSON) >= 0;
+        return _reverseIt->first.compare(_KSForIdentStart) >= 0;
     }
 }
 

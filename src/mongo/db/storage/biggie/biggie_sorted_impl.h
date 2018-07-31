@@ -42,7 +42,7 @@ public:
                                bool dupsAllowed,
                                Ordering order,
                                std::string prefix,
-                               std::string postfix);
+                               std::string identEnd);
     void commit(bool mayInterrupt) override;
     virtual Status addKey(const BSONObj& key, const RecordId& loc);
 
@@ -51,9 +51,9 @@ private:
     bool _dupsAllowed;
     // Order of the keys.
     Ordering _order;
-    // Prefix and postfix for the ident.
+    // Prefix and identEnd for the ident.
     std::string _prefix;
-    std::string _postfix;
+    std::string _identEnd;
     // Whether or not we've already added something before.
     bool _hasLast;
     // This is the KeyString of the last key added.
@@ -104,12 +104,12 @@ public:
                // This is the ident.
                std::string _prefix,
                // This is a string immediately after the ident and before other idents.
-               std::string _postfix,
+               std::string _identEnd,
                StringStore* workingCopy,
                Ordering order,
                bool isUnique,
                std::string prefixBSON,
-               std::string postfixBSON);
+               std::string KSForIdentEnd);
         virtual void setEndPosition(const BSONObj& key, bool inclusive) override;
         virtual boost::optional<IndexKeyEntry> next(RequestedInfo parts = kKeyAndLoc) override;
         virtual boost::optional<IndexKeyEntry> seek(const BSONObj& key,
@@ -145,7 +145,7 @@ public:
         std::string _saveKey;
         // These are the same as before.
         std::string _prefix;
-        std::string _postfix;
+        std::string _identEnd;
         // These two store the iterator, which is the data structure for cursors. The one we use
         // depends on _forward.
         StringStore::iterator _forwardIt;
@@ -159,18 +159,18 @@ public:
         // This stores whether or not the index is unique.
         bool _isUnique;
         // The next two are the same as above.
-        std::string _prefixBSON;
-        std::string _postfixBSON;
+        std::string _KSForIdentStart;
+        std::string _KSForIdentEnd;
     };
 
 private:
     const Ordering _order;
     // These two are the same as before.
     std::string _prefix;
-    std::string _postfix;
-    // These are the keystring representations of the _prefix and the _postfix.
-    std::string _prefixBSON;
-    std::string _postfixBSON;
+    std::string _identEnd;
+    // These are the keystring representations of the _prefix and the _identEnd.
+    std::string _KSForIdentStart;
+    std::string _KSForIdentEnd;
     // This stores whether or not the end position is inclusive.
     bool _isUnique;
     // This stores whethert or not dups are allowed.
