@@ -123,6 +123,8 @@ public:
         virtual void reattachToOperationContext(OperationContext* opCtx) override;
 
     private:
+        // This is a helper function to check if the cursor was explicitly set by the user or not.
+        bool endPosSet();
         // This is a helper function to check if the cursor is valid or not.
         bool checkCursorValid();
         // This is a helper function for seek.
@@ -133,8 +135,6 @@ public:
         // These store the end positions.
         boost::optional<StringStore::iterator> _endPos;
         boost::optional<StringStore::reverse_iterator> _endPosReverse;
-        // This stores whether or not the endPosition has been set.
-        bool _endPosValid;
         // This means if the cursor is a forward or reverse cursor.
         bool _forward;
         // This means whether the cursor has reached the last EOF (with regard to this index).

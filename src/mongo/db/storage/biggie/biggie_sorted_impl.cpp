@@ -454,7 +454,6 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
       _workingCopy(workingCopy),
       _endPos(boost::none),
       _endPosReverse(boost::none),
-      _endPosValid(false),
       _forward(isForward),
       _atEOF(false),
       _lastMoveWasRestore(false),
@@ -468,6 +467,11 @@ SortedDataInterface::Cursor::Cursor(OperationContext* opCtx,
       _prefixBSON(prefixBSON),
       _postfixBSON(postfixBSON) {}
 
+// This function checks whether or not the cursor end position was set by the user or not.
+bool SortedDataInterface::Cursor::endPosSet() {
+    return (_forward && _endPos != boost::none) || (!_forward && _endPosReverse != boost::none);
+}
+
 // This function checks whether or not a cursor is valid. In particular, it checks 1) whether the
 // cursor is at end() or rend(), 2) whether the cursor is on the wrong side of the end position
 // if it was set, and 3) whether the cursor is still in the ident.
@@ -476,7 +480,7 @@ bool SortedDataInterface::Cursor::checkCursorValid() {
         if (_forwardIt == _workingCopy->end()) {
             return false;
         }
-        if (_endPosValid) {
+        if (endPosSet()) {
             // The endPos must be in the ident, at most one past the ident, or end. Therefore, the
             // endPos includes the check for being inside the ident
             return _endPos.get() == _workingCopy->end() ||
@@ -488,7 +492,7 @@ bool SortedDataInterface::Cursor::checkCursorValid() {
         if (_reverseIt == _workingCopy->rend()) {
             return false;
         }
-        if (_endPosValid) {
+        if (endPosSet()) {
             return _endPosReverse.get() == _workingCopy->rend() ||
                 _reverseIt->first.compare(_endPosReverse.get()->first) > 0;
         }
@@ -500,11 +504,10 @@ void SortedDataInterface::Cursor::setEndPosition(const BSONObj& key, bool inclus
     auto finalKey = stripFieldNames(key);
     StringStore* workingCopy = getRecoveryUnitBranch_forking(_opCtx);
     if (finalKey.isEmpty()) {
-        _endPosValid = false;
         _endPos = boost::none;
+        _endPosReverse = boost::none;
         return;
     }
-    _endPosValid = true;
     _endPosIncl = inclusive;
     _endPosKey = key;
     std::string _endPosBound;
@@ -664,7 +667,7 @@ void SortedDataInterface::Cursor::restore() {
     this->_workingCopy = workingCopy;
 
     // Here, we have to reset the end position if one was set earlier.
-    if (_endPosValid) {
+    if (endPosSet()) {
         setEndPosition(_endPosKey.get(), _endPosIncl);
     }
 
