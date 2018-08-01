@@ -342,7 +342,11 @@ Status SortedDataInterface::insert(OperationContext* opCtx,
             lowerBoundIterator->first.compare(_KSForIdentEnd) < 0) {
             IndexKeyEntry ike = keyStringToIndexKeyEntry(
                 lowerBoundIterator->first, lowerBoundIterator->second, _order);
-            if (ike.key.toString() == key.toString() && ike.loc.repr() != loc.repr()) {
+            // We need a KeyString comparison here since even if the types are different, if the
+            // values are the same, then we need to still return equal.
+            auto ks1 = keyToKeyString(ike.key, _order);
+            auto ks2 = keyToKeyString(key, _order);
+            if (ks1->compare(*ks2) == 0 && ike.loc.repr() != loc.repr()) {
                 return dupKeyError(key);
             }
         }
