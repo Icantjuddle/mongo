@@ -647,7 +647,47 @@ public:
     }
 
     const_iterator lower_bound(const Key& key) const {
-        return find(key);
+        std::cout << " ~~~ LOWER BOUND FOR KEY " << key << std::endl;
+        Node* node = _root.get();
+        std::string tempKey = "";
+        for (const char* charKey = key.data(); charKey != key.data() + key.size(); ++charKey) {
+            std::cout << "1" << std::endl;
+            if (node->children[*charKey] != nullptr) {
+                std::cout << "A2" << std::endl;
+                node = node->children[*charKey].get();
+                std::cout << "A3" << std::endl;
+            } else {
+                std::cout << "B2" << std::endl;
+                for (auto iter = node->children.begin() + *charKey; iter != node->children.end();
+                     ++iter) {
+                    std::cout << " ~~~ Looking at " << (*iter)->trieKey << std::endl;
+                    if (iter != nullptr) {
+                        std::cout << " ~~~ found " << (*iter)->trieKey << std::endl;
+                        node = iter->get();
+                        tempKey += (*iter)->trieKey;
+                        break;
+                    }
+                }
+                break;
+            }
+            std::cout << "2" << std::endl;
+            tempKey += *charKey;
+        }
+        std::cout << " ~~~ TEMPKEY " << tempKey << std::endl;
+
+        if (tempKey < key)
+            return end();
+
+        while (node->data == boost::none || node->data->first != key) {
+            for (auto iter = node->children.begin(); iter != node->children.end(); ++iter) {
+                if (iter != nullptr) {
+                    node = iter->get();
+                    break;
+                }
+            }
+        }
+
+        return RadixStore::const_iterator(_root, node);
     }
 
     const_iterator upper_bound(const Key& key) const {
