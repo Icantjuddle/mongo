@@ -63,13 +63,23 @@ public:
         return BSONObj();
     }
 };
+
+
+ServiceContext::ConstructorActionRegisterer registerBiggie(
+    "RegisterBiggieEngine", [](ServiceContext* service) {
+        registerStorageEngine(service, std::make_unique<BiggieStorageEngineFactory>());
+    });
+
 }  // namespace
 
+/*
 MONGO_INITIALIZER_WITH_PREREQUISITES(BiggieEngineInit, ("ServiceContext"))
 (InitializerContext* context) {
     registerStorageEngine(getGlobalServiceContext(),
                           std::make_unique<BiggieStorageEngineFactory>());
     return Status::OK();
 }
+*/
+
 }  // namespace biggie
 }  // namespace mongo
