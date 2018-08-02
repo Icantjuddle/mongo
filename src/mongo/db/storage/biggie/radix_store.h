@@ -653,11 +653,10 @@ public:
                 // If the tree contains the node, keep following it.
                 node = node->children[*charKey].get();
             } else {
-                // If the tree does not contain the next character node, find the next largest one.
-                // If there is no larger node, then it is the end of the tree and there is no node
-                // larger than the given key.
-                const char k = *charKey;
-                auto iter = node->children.begin() + k;
+                // If the tree does not contain the next character node, find the next biggest
+                // character node. If there is no larger node, then it is the end of the tree and
+                // there is no node larger than the given key.
+                auto iter = node->children.begin() + *charKey;
                 for (; iter != node->children.end(); ++iter) {
                     if (*iter != nullptr) {
                         node = iter->get();
