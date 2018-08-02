@@ -233,7 +233,7 @@ StatusWith<RecordData> RecordStore::updateWithDamages(OperationContext* opCtx,
         std::memcpy(target, source, d.size);
     }
     RecordData updatedRecord(doc->second.c_str(), doc->second.length());
-    return updatedRecord;  // Data is un-owned.
+    return updatedRecord.getOwned();  // Data is un-owned.
 }
 
 std::unique_ptr<SeekableRecordCursor> RecordStore::getCursor(OperationContext* opCtx,
