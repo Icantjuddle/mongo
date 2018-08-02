@@ -57,17 +57,17 @@ TEST_F(RadixStoreTest, SimpleInsertTest) {
     std::pair<StringStore::const_iterator, bool> res = thisStore.insert(value_type(value1));
     ASSERT_EQ(thisStore.size(), StringStore::size_type(1));
     ASSERT_TRUE(res.second);
+    ASSERT_TRUE(*res.first == value1);
+
+    res = thisStore.insert(value_type(value2));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
+    ASSERT_TRUE(res.second);
     ASSERT_TRUE(*res.first == value2);
 
-    std::pair<StringStore::const_iterator, bool> res2 = thisStore.insert(value_type(value2));
-    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
-    ASSERT_TRUE(res2.second);
-    ASSERT_TRUE(*res2.first == value2);
-
-    std::pair<StringStore::const_iterator, bool> res3 = thisStore.insert(value_type(value3));
+    res = thisStore.insert(value_type(value3));
     ASSERT_EQ(thisStore.size(), StringStore::size_type(3));
-    ASSERT_TRUE(res3.second);
-    ASSERT_TRUE(*res3.first == value3);
+    ASSERT_TRUE(res.second);
+    ASSERT_TRUE(*res.first == value3);
 }
 
 TEST_F(RadixStoreTest, InsertInCopyFromRootTest) {
@@ -973,10 +973,14 @@ TEST_F(RadixStoreTest, UpperBoundTest) {
     thisStore.insert(value_type(value3));
     thisStore.insert(value_type(value4));
 
-    StringStore::const_iterator iter1 = thisStore.upper_bound(value2.first);
-    ASSERT_EQ(iter1->first, "baz");
-    StringStore::const_iterator iter2 = thisStore.upper_bound(value4.first);
-    ASSERT_TRUE(iter2 == thisStore.end());
+    StringStore::const_iterator iter = thisStore.upper_bound(value2.first);
+    ASSERT_EQ(iter->first, "baz");
+
+    iter = thisStore.upper_bound(value4.first);
+    ASSERT_TRUE(iter == thisStore.end());
+
+    iter = thisStore.upper_bound("baa");
+    ASSERT_EQ(iter->first, "bar");
 }
 
 TEST_F(RadixStoreTest, LowerBoundTest) {
@@ -997,7 +1001,7 @@ TEST_F(RadixStoreTest, LowerBoundTest) {
     ASSERT_EQ(iter1->first, "baz");
 
     StringStore::const_iterator iter2 = thisStore.lower_bound("dummy_key");
-    ASSERT_TRUE(iter2 == thisStore.end());
+    ASSERT_TRUE(iter2 == thisStore.find("foo"));
 }
 
 TEST_F(RadixStoreTest, ReverseIteratorTest) {
