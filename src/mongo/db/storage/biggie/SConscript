@@ -39,7 +39,14 @@ env.Library(
 )
 
 env.CppUnitTest(
-    target='storage_biggie_store_test',
+    target='storage_biggie_radix_store_test',
+    source=[
+        'radix_store_test.cpp',
+    ],
+)
+
+env.CppUnitTest(
+    target='storage_biggie_map_store_test',
     source=[
         'store_test.cpp',
     ],
