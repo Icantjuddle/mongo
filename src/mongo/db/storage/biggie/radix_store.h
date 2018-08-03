@@ -89,13 +89,7 @@ public:
             return old;
         }
 
-        radix_iterator& operator=(const radix_iterator& other) {
-            if (this != &other) {
-                _root = std::move(other._root);
-                _current = other._current;
-            }
-            return *this;
-        }
+        radix_iterator& operator=(const radix_iterator& other) = default;
 
         bool operator==(const radix_iterator& other) const {
             return this->_current == other._current;

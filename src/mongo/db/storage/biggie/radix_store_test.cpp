@@ -70,6 +70,26 @@ TEST_F(RadixStoreTest, SimpleInsertTest) {
     ASSERT_TRUE(*res.first == value3);
 }
 
+TEST_F(RadixStoreTest, SimpleIteratorAssignmentTest) {
+    value_type value1 = std::make_pair("food", "1");
+    value_type value2 = std::make_pair("foo", "2");
+    value_type value3 = std::make_pair("bar", "3");
+
+    thisStore.insert(value_type(value1));
+    thisStore.insert(value_type(value2));
+    thisStore.insert(value_type(value3));
+
+    otherStore = thisStore;
+
+    StringStore::const_iterator thisIter = thisStore.begin();
+    StringStore::const_iterator otherIter = otherStore.begin();
+
+    ASSERT_TRUE(thisIter == otherIter);
+
+    thisIter = otherStore.begin();
+    ASSERT_TRUE(thisIter == otherIter);
+}
+
 TEST_F(RadixStoreTest, InsertInCopyFromRootTest) {
     value_type value1 = std::make_pair("foo", "1");
     value_type value2 = std::make_pair("fod", "2");
@@ -133,15 +153,15 @@ TEST_F(RadixStoreTest, InsertInBothCopiesTest) {
     thisStore.insert(value_type(value3));
     otherStore.insert(value_type(value4));
 
-    StringStore::const_iterator it1 = thisStore.find(value4.first);
-    StringStore::const_iterator it2 = otherStore.find(value3.first);
+    StringStore::const_iterator check_this = thisStore.find(value4.first);
+    StringStore::const_iterator check_other = otherStore.find(value3.first);
 
     // 'thisStore' should not have value4 and 'otherStore' should not have value3.
-    ASSERT_TRUE(it1 == thisStore.end());
-    ASSERT_TRUE(it2 == otherStore.end());
+    ASSERT_TRUE(check_this == thisStore.end());
+    ASSERT_TRUE(check_other == otherStore.end());
 
-    StringStore::const_iterator check_this = thisStore.begin();
-    StringStore::const_iterator check_other = otherStore.begin();
+    check_this = thisStore.begin();
+    check_other = otherStore.begin();
 
     // Only 'otherStore' should have the 'fed' object, whereas thisStore should point to the 'fee'
     // node
@@ -1057,14 +1077,14 @@ TEST_F(RadixStoreTest, LowerBoundTest) {
     thisStore.insert(value_type(value3));
     thisStore.insert(value_type(value4));
 
-    StringStore::const_iterator iter1 = thisStore.lower_bound(value2.first);
-    ASSERT_EQ(iter1->first, "bar");
+    StringStore::const_iterator iter = thisStore.lower_bound(value2.first);
+    ASSERT_EQ(iter->first, "bar");
 
-    ++iter1;
-    ASSERT_EQ(iter1->first, "baz");
+    ++iter;
+    ASSERT_EQ(iter->first, "baz");
 
-    StringStore::const_iterator iter2 = thisStore.lower_bound("dummy_key");
-    ASSERT_TRUE(iter2 == thisStore.find("foo"));
+    iter = thisStore.lower_bound("dummy_key");
+    ASSERT_TRUE(iter == thisStore.find("foo"));
 }
 
 TEST_F(RadixStoreTest, ReverseIteratorTest) {
