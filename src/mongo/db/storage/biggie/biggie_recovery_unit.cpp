@@ -55,14 +55,14 @@ void RecoveryUnit::commitUnitOfWork() {
                 _workingCopy.reset();
                 _workingCopy = std::move(mergedWithMaster);
             } catch (const merge_conflict_exception&) {
-                log() << "Biggie Merge conflict";
+                //log() << "Biggie Merge conflict";
                 throw WriteConflictException();
             }
             stdx::lock_guard<stdx::mutex> lkOnMaster(_KVEngine->getMasterLock());
             if (_KVEngine->getMaster_inlock() == master) {
                 _KVEngine->setMaster_inlock(std::move(_workingCopy));
                 _mergeBase.reset();
-                log() << "Biggie Commit successful";
+                //log() << "Biggie Commit successful";
                 break;
             }
         }
@@ -78,7 +78,7 @@ void RecoveryUnit::commitUnitOfWork() {
 }
 
 void RecoveryUnit::abortUnitOfWork() {
-    log() << "Biggie abort unit of work";
+    //log() << "Biggie abort unit of work";
     _workingCopy.reset();
     _mergeBase.reset();
     try {
