@@ -350,7 +350,7 @@ boost::optional<Record> RecordStore::Cursor::next() {
         _savedPosition = std::string(it->first);
         /* std::cout << toHex(it->first.c_str(), it->first.length()) << std::endl; */
         return Record{RecordId(extractRecordId(it->first)),
-                      RecordData(it->second.c_str(), it->second.length())};
+                      RecordData(it->second.c_str(), it->second.length()).getOwned()};
     }
     /* std::cout << "NONE returned from next" << std::endl; */
     return boost::none;
@@ -446,7 +446,7 @@ boost::optional<Record> RecordStore::ReverseCursor::seekExact(const RecordId& id
     }
     it = StringStore::reverse_iterator(++canFind);  // reverse iterator returns item 1 before
     _savedPosition = it->first;
-    return Record{id, RecordData(it->second.c_str(), it->second.length())};
+    return Record{id, RecordData(it->second.c_str(), it->second.length()).getOwned()};
 }
 
 void RecordStore::ReverseCursor::save() {}
