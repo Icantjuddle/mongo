@@ -382,10 +382,6 @@ void RecordStore::Cursor::saveUnpositioned() {
 bool RecordStore::Cursor::restore() {
     /* std::cout << "Restore" << std::endl; */
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    if (!_savedPosition) {
-        _lastMoveWasRestore = false;
-        return true;
-    }
     it = (_savedPosition) ? workingCopy->lower_bound(_savedPosition.value()) : workingCopy->end();
     /* if (it != workingCopy->end()) */
     /*     std::cout << "restored" << toHex(it->first.c_str(), it->first.length()) << std::endl; */
