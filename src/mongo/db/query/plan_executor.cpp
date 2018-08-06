@@ -352,6 +352,7 @@ void PlanExecutor::saveState() {
         _root->saveState();
     }
     _currentState = kSaved;
+    log() << "\n\n\nHere 3\n\n\n";
 }
 
 Status PlanExecutor::restoreState() {
@@ -374,6 +375,7 @@ Status PlanExecutor::restoreStateWithoutRetrying() {
     }
 
     _currentState = kUsable;
+    log() << "\n\n\nHere 4\n\n\n";
     return _killStatus;
 }
 
@@ -382,6 +384,7 @@ void PlanExecutor::detachFromOperationContext() {
     _opCtx = nullptr;
     _root->detachFromOperationContext();
     _currentState = kDetached;
+    log() << "\n\n\nHere 5\n\n\n";
     _everDetachedFromOperationContext = true;
 }
 
@@ -394,6 +397,7 @@ void PlanExecutor::reattachToOperationContext(OperationContext* opCtx) {
 
     _opCtx = opCtx;
     _root->reattachToOperationContext(opCtx);
+    log() << "\n\n\nHere 1\n\n\n";
     _currentState = kSaved;
 }
 
@@ -682,6 +686,7 @@ void PlanExecutor::dispose(OperationContext* opCtx, CursorManager* cursorManager
     }
     _root->dispose(opCtx);
     _currentState = kDisposed;
+    log() << "\n\n\nHere 2\n\n\n";
 }
 
 Status PlanExecutor::executePlan() {

@@ -418,14 +418,14 @@ boost::optional<Record> RecordStore::ReverseCursor::next() {
     if (_needFirstSeek) {
         _needFirstSeek = false;
         it = StringStore::reverse_iterator(workingCopy->upper_bound(_postfix));
-    } else if (it != workingCopy->rend()) {
+    } else if (it != workingCopy->rend() && !_lastMoveWasRestore) {
         ++it;
-    } else {
-        return boost::none;
     }
 
+    _lastMoveWasRestore = false;
+
     if (it != workingCopy->rend() && inPrefix(it->first)) {
-        _savedPosition = it->first;
+        _savedPosition = std::string(it->first);
         Record nextRecord;
         nextRecord.id = RecordId(extractRecordId(it->first));
         nextRecord.data = RecordData(it->second.c_str(), it->second.length());
@@ -458,6 +458,7 @@ bool RecordStore::ReverseCursor::restore() {
     it = _savedPosition
         ? StringStore::reverse_iterator(workingCopy->upper_bound(_savedPosition.value()))
         : workingCopy->rend();
+    _lastMoveWasRestore = (it == workingCopy->rend() || it->first != _savedPosition.value());
     return true;
 }
 
