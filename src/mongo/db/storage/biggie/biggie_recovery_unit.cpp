@@ -41,12 +41,12 @@ namespace mongo {
 namespace biggie {
 
 RecoveryUnit::RecoveryUnit(KVEngine* parentKVEngine, stdx::function<void()> cb)
-    : _waitUntilDurableCallback(cb), _KVEngine(parentKVEngine) {}
+    : _waitUntilDurableCallback(cb), _KVEngine(parentKVEngine), _dirty{false} {}
 
 void RecoveryUnit::beginUnitOfWork(OperationContext* opCtx) {}
 
 void RecoveryUnit::commitUnitOfWork() {
-    if (_workingCopy || _mergeBase) {
+    if (_dirty && _workingCopy) {
         while (true) {
             std::shared_ptr<StringStore> master = _KVEngine->getMaster();
             try {
@@ -55,17 +55,18 @@ void RecoveryUnit::commitUnitOfWork() {
                 _workingCopy.reset();
                 _workingCopy = std::move(mergedWithMaster);
             } catch (const merge_conflict_exception&) {
-                //log() << "Biggie Merge conflict";
+                // log() << "Biggie Merge conflict";
                 throw WriteConflictException();
             }
             stdx::lock_guard<stdx::mutex> lkOnMaster(_KVEngine->getMasterLock());
             if (_KVEngine->getMaster_inlock() == master) {
                 _KVEngine->setMaster_inlock(std::move(_workingCopy));
                 _mergeBase.reset();
-                //log() << "Biggie Commit successful";
+                // log() << "Biggie Commit successful";
                 break;
             }
         }
+        _dirty = false;
     }
     try {
         for (Changes::iterator it = _changes.begin(), end = _changes.end(); it != end; ++it) {
@@ -78,7 +79,7 @@ void RecoveryUnit::commitUnitOfWork() {
 }
 
 void RecoveryUnit::abortUnitOfWork() {
-    //log() << "Biggie abort unit of work";
+    // log() << "Biggie abort unit of work";
     _workingCopy.reset();
     _mergeBase.reset();
     try {
@@ -101,6 +102,7 @@ bool RecoveryUnit::waitUntilDurable() {
 void RecoveryUnit::abandonSnapshot() {
     _mergeBase.reset();
     _workingCopy.reset();
+    _dirty = false;
     // TODO : check if we need to add something later.
 }
 

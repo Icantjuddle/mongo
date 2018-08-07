@@ -398,7 +398,7 @@ Status MultiIndexBlockImpl::insertAllDocumentsInCollection() {
 
             WriteUnitOfWork wunit(_opCtx);
             Status ret = insert(objToIndex.value(), loc);
-            if (_buildInBackground || true)
+            if (_buildInBackground)
                 exec->saveState();
             if (!ret.isOK()) {
                 // Fail the index build hard.
