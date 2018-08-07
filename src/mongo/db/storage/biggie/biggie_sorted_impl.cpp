@@ -65,6 +65,10 @@ StringStore* getRecoveryUnitBranch_forking(OperationContext* opCtx) {
     biggieRCU->forkIfNeeded();
     return biggieRCU->getWorkingCopy();
 }
+void dirtyRecoveryUnit(OperationContext* opCtx) {
+    RecoveryUnit* biggieRCU = checked_cast<RecoveryUnit*>(opCtx->recoveryUnit());
+    biggieRCU->makeDirty();
+}
 
 // This just checks to see if the field names are empty or not.
 bool hasFieldNames(const BSONObj& obj) {
@@ -282,6 +286,7 @@ Status SortedDataBuilderInterface::addKey(const BSONObj& key, const RecordId& lo
     _lastKeyToString = newKSToString;
     _lastRID = loc.repr();
 
+    dirtyRecoveryUnit(_opCtx);
     return Status::OK();
 }
 
@@ -359,6 +364,7 @@ Status SortedDataInterface::insert(OperationContext* opCtx,
         std::string(reinterpret_cast<const char*>(workingCopyInternalKs->getTypeBits().getBuffer()),
                     workingCopyInternalKs->getTypeBits().getSize());
     workingCopy->insert(StringStore::value_type(workingCopyInsertKey, internalTbString));
+    dirtyRecoveryUnit(opCtx);
     return Status::OK();
 }
 
@@ -369,6 +375,7 @@ void SortedDataInterface::unindex(OperationContext* opCtx,
     std::string workingCopyInsertKey = combineKeyAndRID(key, loc, _prefix, _order);
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     workingCopy->erase(workingCopyInsertKey);
+    dirtyRecoveryUnit(opCtx);
 }
 
 // This function is, as of now, not in the interface, but there exists a server ticket to add
@@ -378,6 +385,7 @@ Status SortedDataInterface::truncate(OperationContext* opCtx) {
     auto workingCopyLowerBound = workingCopy->lower_bound(_KSForIdentStart);
     auto workingCopyUpperBound = workingCopy->upper_bound(_KSForIdentEnd);
     workingCopy->erase(workingCopyLowerBound, workingCopyUpperBound);
+    dirtyRecoveryUnit(opCtx);
     return Status::OK();
 }
 
