@@ -101,7 +101,7 @@ RecordStore::RecordStore(StringData ns,
       _prefix(createKey(_ident, std::numeric_limits<int64_t>::min())),
       _postfix(createKey(_ident, std::numeric_limits<int64_t>::max())),
       _cappedCallback(cappedCallback) {
-    log() << "RS created with " << _identStr;
+    // log() << "\n\nRS created with " << _identStr << "|" << ident.toString() << "|" << ns.toString() << "\n\n";
 }
 
 const char* RecordStore::name() const {
@@ -174,9 +174,14 @@ StatusWith<RecordId> RecordStore::insertRecord(OperationContext* opCtx,
                                                Timestamp) {
     int64_t thisRecordId = nextRecordId();
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
-    std::string key = createKey(_ident, thisRecordId);
-    /* log() << "Inserting rec into " << _ident << " with key " << toHex(key.c_str(), key.length());
-     */
+    std::string key;
+    while (true) {
+        key = createKey(_ident, thisRecordId);
+        if (workingCopy->find(createKey(_ident, thisRecordId)) == workingCopy->end()) {
+            break;
+        }
+        thisRecordId = nextRecordId();
+    }
     workingCopy->insert(StringStore::value_type{key, std::string(data, len)});
     dirtyRecoveryUnit(opCtx);
     return StatusWith<RecordId>(RecordId(thisRecordId));
@@ -337,7 +342,7 @@ RecordStore::Cursor::Cursor(OperationContext* opCtx, const RecordStore& rs) : op
 }
 
 boost::optional<Record> RecordStore::Cursor::next() {
-    /* std::cout << "Next" << std::endl; */
+    // std::cout << "\n\nNext in rs\n" << std::endl;
     _savedPosition = boost::none;
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);
     /* std::cout << "Next" << std::endl; */
@@ -353,11 +358,11 @@ boost::optional<Record> RecordStore::Cursor::next() {
     _lastMoveWasRestore = false;
     if (it != workingCopy->end() && inPrefix(it->first)) {
         _savedPosition = std::string(it->first);
-        /* std::cout << toHex(it->first.c_str(), it->first.length()) << std::endl; */
+        std::cout << toHex(it->first.c_str(), it->first.length()) << std::endl;
         return Record{RecordId(extractRecordId(it->first)),
                       RecordData(it->second.c_str(), it->second.length()).getOwned()};
     }
-    /* std::cout << "NONE returned from next" << std::endl; */
+    // std::cout << "NONE returned from next" << std::endl;
     return boost::none;
 }
 
@@ -440,6 +445,7 @@ boost::optional<Record> RecordStore::ReverseCursor::next() {
 }
 
 boost::optional<Record> RecordStore::ReverseCursor::seekExact(const RecordId& id) {
+    std::cout << "seek xact to " << std::to_string(id.repr()) << std::endl;
     _needFirstSeek = false;
     _savedPosition = boost::none;
     StringStore* workingCopy = getRecoveryUnitBranch_forking(opCtx);

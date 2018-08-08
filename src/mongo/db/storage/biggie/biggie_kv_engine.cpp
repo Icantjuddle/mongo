@@ -108,10 +108,12 @@ Status KVEngine::dropIdent(OperationContext* opCtx, StringData ident) {
         CollectionOptions s;
         auto rs = getRecordStore(opCtx, ""_sd, ident, s);
         /* std::cout << "Truncating RS w/ Ident: " << ident.toString() << std::endl; */
+        _idents.erase(ident.toString());
         return rs->truncate(opCtx);
     } else if (_idents.count(ident.toString()) > 0) {
         auto sdi = std::make_unique<SortedDataInterface>(Ordering::make(BSONObj()), true, ident);
         /* std::cout << "Truncating SDI w/ Ident: " << ident.toString() << std::endl; */
+        _idents.erase(ident.toString());
         return sdi->truncate(opCtx);
     }
     return Status::OK();

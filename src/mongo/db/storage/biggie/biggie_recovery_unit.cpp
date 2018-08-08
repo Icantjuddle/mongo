@@ -47,6 +47,9 @@ void RecoveryUnit::beginUnitOfWork(OperationContext* opCtx) {}
 
 void RecoveryUnit::commitUnitOfWork() {
     if (_dirty && _workingCopy) {
+        // This could cause issues later on if tasks are running in parallel. This is because if
+        // upper level code assumes that things it inserts will not be freed after a WCE, that is
+        // simply not true with Biggie.
         while (true) {
             std::shared_ptr<StringStore> master = _KVEngine->getMaster();
             try {
