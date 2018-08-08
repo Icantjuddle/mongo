@@ -173,8 +173,6 @@ private:
     std::string _KSForIdentEnd;
     // This stores whether or not the end position is inclusive.
     bool _isUnique;
-    // This stores whethert or not dups are allowed.
-    bool _dupsAllowed;
 };
 }  // namespace biggie
 }  // namespace mongo
