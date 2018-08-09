@@ -192,11 +192,14 @@ Status rebuildIndexesOnCollection(OperationContext* opCtx,
         // Cursor is left one past the end of the batch inside writeConflictRetry
         auto beginBatchId = record->id;
         Status status = writeConflictRetry(opCtx, "repairDatabase", cce->ns().ns(), [&] {
+            // This will be redundant in cases where the commit works, but is needed for retries.
             cursor->seekExact(beginBatchId);
             WriteUnitOfWork wunit(opCtx);
             for (int i = 0; record && i < internalInsertMaxBatchSize.load(); i++) {
                 RecordId id = record->id;
                 RecordData& data = record->data;
+                // Use the latest BSON validation version. We retain decimal data when repairing
+                // database even if decimal is disabled.
                 auto validStatus = validateBSON(data.data(), data.size(), BSONVersion::kLatest);
                 if (!validStatus.isOK()) {
                     log() << "Invalid BSON detected at " << id << ": " << redact(validStatus)
@@ -214,9 +217,10 @@ Status rebuildIndexesOnCollection(OperationContext* opCtx,
             }
             cursor->save();
             wunit.commit();
-            cursor->restore();
             return Status::OK();
         });
+        // This can result in a writeConflictException but is rare enough to propegate up.
+        cursor->restore();
         if (!status.isOK()) {
             return status;
         }
