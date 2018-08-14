@@ -844,17 +844,17 @@ TEST_F(RadixStoreTest, MergeNoModifications) {
     expected.insert(value_type(value1));
     expected.insert(value_type(value2));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
 }
 
 TEST_F(RadixStoreTest, MergeModifications) {
     value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("1", "bar");
+    value_type value2 = std::make_pair("1", "barrrr");
 
     value_type value3 = std::make_pair("3", "baz");
-    value_type value4 = std::make_pair("3", "faz");
+    value_type value4 = std::make_pair("3", "fazzzz");
 
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value3));
@@ -869,9 +869,9 @@ TEST_F(RadixStoreTest, MergeModifications) {
     expected.insert(value_type(value2));
     expected.insert(value_type(value4));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
 }
 
 TEST_F(RadixStoreTest, MergeDeletions) {
@@ -893,9 +893,9 @@ TEST_F(RadixStoreTest, MergeDeletions) {
     expected.insert(value_type(value1));
     expected.insert(value_type(value3));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
 }
 
 TEST_F(RadixStoreTest, MergeInsertions) {
@@ -918,9 +918,9 @@ TEST_F(RadixStoreTest, MergeInsertions) {
     expected.insert(value_type(value3));
     expected.insert(value_type(value4));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
 }
 
 TEST_F(RadixStoreTest, MergeEmptyInsertionOther) {
@@ -931,9 +931,9 @@ TEST_F(RadixStoreTest, MergeEmptyInsertionOther) {
 
     otherStore.insert(value_type(value1));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == otherStore);
+    ASSERT_TRUE(thisStore == otherStore);
 }
 
 TEST_F(RadixStoreTest, MergeEmptyInsertionThis) {
@@ -944,9 +944,9 @@ TEST_F(RadixStoreTest, MergeEmptyInsertionThis) {
 
     thisStore.insert(value_type(value1));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == thisStore);
+    ASSERT_TRUE(thisStore == thisStore);
 }
 
 TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
@@ -980,9 +980,9 @@ TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
     expected.insert(value_type(value5));
     expected.insert(value_type(value6));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
 }
 
 TEST_F(RadixStoreTest, MergeConflictingModifications) {
