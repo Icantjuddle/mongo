@@ -862,8 +862,8 @@ TEST_F(RadixStoreTest, DistanceTest) {
 }
 
 TEST_F(RadixStoreTest, MergeNoModifications) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("2", "bar");
+    value_type value1 = std::make_pair("foo", "1");
+    value_type value2 = std::make_pair("bar", "2");
 
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value2));
@@ -874,17 +874,55 @@ TEST_F(RadixStoreTest, MergeNoModifications) {
     expected.insert(value_type(value1));
     expected.insert(value_type(value2));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
+
+    ASSERT_EQ(expected.size(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(2));
+
+    ASSERT_EQ(expected.dataSize(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(2));
+}
+
+TEST_F(RadixStoreTest, MergeNoModificationsSharedKeyPrefix) {
+    value_type value1 = std::make_pair("foo", "1");
+    value_type value2 = std::make_pair("food", "2");
+
+    baseStore.insert(value_type(value1));
+    baseStore.insert(value_type(value2));
+
+    thisStore = baseStore;
+    otherStore = baseStore;
+
+    expected.insert(value_type(value1));
+    expected.insert(value_type(value2));
+
+    thisStore.merge3(baseStore, otherStore);
+
+    ASSERT_TRUE(thisStore == expected);
+
+    ASSERT_EQ(expected.size(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(2));
+
+    ASSERT_EQ(expected.dataSize(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(2));
+
+    ASSERT_EQ(thisStore.to_string_for_test(),
+              "\n foo*"
+              "\n  d*\n");
 }
 
 TEST_F(RadixStoreTest, MergeModifications) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("1", "bar");
+    value_type value1 = std::make_pair("foo", "1");
+    value_type value2 = std::make_pair("foo", "1234");
 
-    value_type value3 = std::make_pair("3", "baz");
-    value_type value4 = std::make_pair("3", "faz");
+    value_type value3 = std::make_pair("bar", "1");
+    value_type value4 = std::make_pair("bar", "1234");
 
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value3));
@@ -899,16 +937,28 @@ TEST_F(RadixStoreTest, MergeModifications) {
     expected.insert(value_type(value2));
     expected.insert(value_type(value4));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
+
+    ASSERT_EQ(expected.size(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(2));
+
+    ASSERT_EQ(expected.dataSize(), StringStore::size_type(8));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(8));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(2));
+
+    ASSERT_EQ(thisStore.to_string_for_test(),
+              "\n bar*"
+              "\n foo*\n");
 }
 
 TEST_F(RadixStoreTest, MergeDeletions) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("2", "moo");
-    value_type value3 = std::make_pair("3", "bar");
-    value_type value4 = std::make_pair("4", "baz");
+    value_type value1 = std::make_pair("foo", "1");
+    value_type value2 = std::make_pair("moo", "2");
+    value_type value3 = std::make_pair("bar", "3");
+    value_type value4 = std::make_pair("baz", "4");
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value2));
     baseStore.insert(value_type(value3));
@@ -923,16 +973,28 @@ TEST_F(RadixStoreTest, MergeDeletions) {
     expected.insert(value_type(value1));
     expected.insert(value_type(value3));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
+
+    ASSERT_EQ(expected.size(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(4));
+
+    ASSERT_EQ(expected.dataSize(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(4));
+
+    ASSERT_EQ(thisStore.to_string_for_test(),
+              "\n bar*"
+              "\n foo*\n");
 }
 
 TEST_F(RadixStoreTest, MergeInsertions) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("2", "foo");
-    value_type value3 = std::make_pair("3", "bar");
-    value_type value4 = std::make_pair("4", "faz");
+    value_type value1 = std::make_pair("foo", "1");
+    value_type value2 = std::make_pair("moo", "2");
+    value_type value3 = std::make_pair("bar", "3");
+    value_type value4 = std::make_pair("cat", "4");
 
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value2));
@@ -948,35 +1010,142 @@ TEST_F(RadixStoreTest, MergeInsertions) {
     expected.insert(value_type(value3));
     expected.insert(value_type(value4));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
+
+    ASSERT_EQ(expected.size(), StringStore::size_type(4));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(4));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(2));
+
+    ASSERT_EQ(expected.dataSize(), StringStore::size_type(4));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(4));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(2));
+
+    ASSERT_EQ(thisStore.to_string_for_test(),
+              "\n bar*"
+              "\n cat*"
+              "\n foo*"
+              "\n moo*\n");
+}
+
+TEST_F(RadixStoreTest, MergeConflictingPathCompressedKeys) {
+    // This test creates a "simple" merge problem where 'otherStore' has an insertion, and
+    // 'thisStore' has a non-conflicting insertion. However, due to the path compression, the trees
+    // end up looking slightly different and present a challenging case.
+    value_type value1 = std::make_pair("fod", "1");
+    value_type value2 = std::make_pair("foda", "2");
+    value_type value3 = std::make_pair("fol", "3");
+
+    baseStore.insert(value_type(value1));
+    thisStore = baseStore;
+    otherStore = baseStore;
+
+    otherStore.insert(value_type(value2));
+    thisStore.insert(value_type(value3));
+
+    expected.insert(value_type(value1));
+    expected.insert(value_type(value2));
+    expected.insert(value_type(value3));
+
+    thisStore.merge3(baseStore, otherStore);
+
+    ASSERT_TRUE(thisStore == expected);
+
+    ASSERT_EQ(otherStore.size(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(3));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(1));
+
+    ASSERT_EQ(otherStore.dataSize(), StringStore::size_type(2));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(3));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(1));
+
+    ASSERT_EQ(thisStore.to_string_for_test(),
+              "\n fo"
+              "\n  d*"
+              "\n   a*"
+              "\n  l*\n");
+}
+
+TEST_F(RadixStoreTest, MergeConflictingPathCompressedKeys2) {
+    // This test is similar to the one above with slight different looking trees.
+    value_type value1 = std::make_pair("foe", "1");
+    value_type value2 = std::make_pair("fod", "2");
+    value_type value3 = std::make_pair("fol", "3");
+
+    baseStore.insert(value_type(value1));
+    thisStore = baseStore;
+    otherStore = baseStore;
+
+    otherStore.insert(value_type(value2));
+    otherStore.erase(value1.first);
+
+    thisStore.insert(value_type(value3));
+
+    expected.insert(value_type(value2));
+    expected.insert(value_type(value3));
+
+    thisStore.merge3(baseStore, otherStore);
+
+    ASSERT_TRUE(thisStore == expected);
+
+    ASSERT_EQ(otherStore.size(), StringStore::size_type(1));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(1));
+    ASSERT_EQ(expected.size(), StringStore::size_type(2));
+
+    ASSERT_EQ(otherStore.dataSize(), StringStore::size_type(1));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(2));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(1));
+    ASSERT_EQ(expected.dataSize(), StringStore::size_type(2));
+
+    ASSERT_EQ(thisStore.to_string_for_test(),
+              "\n fo"
+              "\n  d*"
+              "\n  l*\n");
 }
 
 TEST_F(RadixStoreTest, MergeEmptyInsertionOther) {
-    value_type value1 = std::make_pair("1", "foo");
+    value_type value1 = std::make_pair("foo", "bar");
 
     thisStore = baseStore;
     otherStore = baseStore;
 
     otherStore.insert(value_type(value1));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == otherStore);
+    ASSERT_TRUE(thisStore == otherStore);
+
+    ASSERT_EQ(otherStore.size(), StringStore::size_type(1));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(1));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(0));
+
+    ASSERT_EQ(otherStore.dataSize(), StringStore::size_type(3));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(3));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(0));
 }
 
 TEST_F(RadixStoreTest, MergeEmptyInsertionThis) {
-    value_type value1 = std::make_pair("1", "foo");
+    value_type value1 = std::make_pair("foo", "bar");
 
     thisStore = baseStore;
     otherStore = baseStore;
 
     thisStore.insert(value_type(value1));
+    expected = thisStore;
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == thisStore);
+    ASSERT_TRUE(expected == thisStore);
+
+    ASSERT_EQ(otherStore.size(), StringStore::size_type(0));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(1));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(0));
+
+    ASSERT_EQ(otherStore.dataSize(), StringStore::size_type(0));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(3));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(0));
 }
 
 TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
@@ -986,8 +1155,8 @@ TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
     value_type value4 = std::make_pair("4", "faz");
     value_type value5 = std::make_pair("5", "too");
     value_type value6 = std::make_pair("6", "moo");
-    value_type value7 = std::make_pair("1", "modified");
-    value_type value8 = std::make_pair("2", "modified2");
+    value_type value7 = std::make_pair("1", "1234");
+    value_type value8 = std::make_pair("2", "12345");
 
     baseStore.insert(value_type(value1));
     baseStore.insert(value_type(value2));
@@ -1005,20 +1174,36 @@ TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
     otherStore.erase(value3.first);
     otherStore.insert(value_type(value6));
 
-    expected.insert(value_type(value7));
-    expected.insert(value_type(value8));
     expected.insert(value_type(value5));
     expected.insert(value_type(value6));
+    expected.insert(value_type(value7));
+    expected.insert(value_type(value8));
 
-    StringStore merged = thisStore.merge3(baseStore, otherStore);
+    thisStore.merge3(baseStore, otherStore);
 
-    ASSERT_TRUE(merged == expected);
+    ASSERT_TRUE(thisStore == expected);
+
+    ASSERT_EQ(otherStore.size(), StringStore::size_type(4));
+    ASSERT_EQ(thisStore.size(), StringStore::size_type(4));
+    ASSERT_EQ(baseStore.size(), StringStore::size_type(4));
+    ASSERT_EQ(expected.size(), StringStore::size_type(4));
+
+    ASSERT_EQ(otherStore.dataSize(), StringStore::size_type(14));
+    ASSERT_EQ(thisStore.dataSize(), StringStore::size_type(15));
+    ASSERT_EQ(baseStore.dataSize(), StringStore::size_type(12));
+    ASSERT_EQ(expected.dataSize(), StringStore::size_type(15));
+
+    ASSERT_EQ(thisStore.to_string_for_test(),
+              "\n 1*"
+              "\n 2*"
+              "\n 5*"
+              "\n 6*\n");
 }
 
 TEST_F(RadixStoreTest, MergeConflictingModifications) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("1", "bar");
-    value_type value3 = std::make_pair("1", "baz");
+    value_type value1 = std::make_pair("foo", "1");
+    value_type value2 = std::make_pair("foo", "2");
+    value_type value3 = std::make_pair("foo", "3");
 
     baseStore.insert(value_type(value1));
 
@@ -1033,8 +1218,8 @@ TEST_F(RadixStoreTest, MergeConflictingModifications) {
 }
 
 TEST_F(RadixStoreTest, MergeConflictingModifictionOtherAndDeletionThis) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("1", "bar");
+    value_type value1 = std::make_pair("foo", "1");
+    value_type value2 = std::make_pair("foo", "2");
 
     baseStore.insert(value_type(value1));
 
@@ -1046,8 +1231,8 @@ TEST_F(RadixStoreTest, MergeConflictingModifictionOtherAndDeletionThis) {
 }
 
 TEST_F(RadixStoreTest, MergeConflictingModifictionThisAndDeletionOther) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("1", "bar");
+    value_type value1 = std::make_pair("foo", "1");
+    value_type value2 = std::make_pair("foo", "2");
 
     baseStore.insert(value_type(value1));
 
@@ -1062,8 +1247,8 @@ TEST_F(RadixStoreTest, MergeConflictingModifictionThisAndDeletionOther) {
 }
 
 TEST_F(RadixStoreTest, MergeConflictingInsertions) {
-    value_type value1 = std::make_pair("1", "foo");
-    value_type value2 = std::make_pair("1", "foo");
+    value_type value1 = std::make_pair("foo", "bar");
+    value_type value2 = std::make_pair("foo", "bar");
 
     thisStore = baseStore;
     otherStore = baseStore;
