@@ -49,6 +49,14 @@ protected:
     StringStore expected;
 };
 
+TEST_F(RadixStoreTest, Test1) {
+    for (char i = 33; i < 127; ++i) {
+        thisStore.insert(std::make_pair(std::string(1, i), "1"));
+        std::cout << i << std::endl;
+    }
+    std::cout << thisStore.to_string_for_test() << std::endl;
+}
+
 TEST_F(RadixStoreTest, SimpleInsertTest) {
     value_type value1 = std::make_pair("food", "1");
     value_type value2 = std::make_pair("foo", "2");
@@ -1009,7 +1017,7 @@ TEST_F(RadixStoreTest, MergeInsertionDeletionModification) {
     expected.insert(value_type(value8));
     expected.insert(value_type(value5));
     expected.insert(value_type(value6));
-
+    
     StringStore merged = thisStore.merge3(baseStore, otherStore);
 
     ASSERT_TRUE(merged == expected);

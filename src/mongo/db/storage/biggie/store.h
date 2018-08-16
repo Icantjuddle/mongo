@@ -55,7 +55,6 @@ class merge_conflict_exception : std::exception {
 template <class Key, class T>
 class RadixStore {
     class Node;
-
 public:
     using mapped_type = T;
     using value_type = std::pair<const Key, mapped_type>;
@@ -156,9 +155,7 @@ public:
 
                 // Check the children right of the node that the iterator was at already. This way,
                 // there will be no backtracking in the traversal.
-                for (auto iter = oldKey + 1 + node->children.begin(); iter != node->children.end();
-                     ++iter) {
-
+                for (auto iter = node->findChild(oldKey) + 1; iter != node->children.end(); ++iter) {
                     // If the node has a child, then the sub-tree must have a node with data that
                     // has not yet been visited.
                     if (*iter != nullptr) {
@@ -312,10 +309,11 @@ public:
                 // After moving up in the tree, continue searching for neighboring nodes to see if
                 // they have data, moving from right to left.
                 for (int i = oldKey - 1; i >= 0; i--) {
-                    if (node->children[i] != nullptr) {
+                    auto child = node->findChild(i);
+                    if (child != node->children.end()) {
                         // If there is a sub-tree found, it must have data, therefore it's necessary
                         // to traverse to the right most node.
-                        _current = node->children[i].get();
+                        _current = (*child).get();
                         _traverseRightSubtree();
                         return;
                     }
@@ -448,6 +446,7 @@ public:
         std::vector<std::pair<Node*, bool>> context;
 
         std::shared_ptr<Node> node = _root;
+        typename std::vector<std::shared_ptr<Node>>::iterator iter;
         bool isUniquelyOwned = _root.use_count() - 1 == 1;
         context.push_back(std::make_pair(node.get(), isUniquelyOwned));
 
@@ -455,11 +454,13 @@ public:
         size_t depth = 0;
         while (depth < key.size()) {
             uint8_t c = static_cast<uint8_t>(charKey[depth]);
-            node = node->children[c];
-
-            if (node == nullptr) {
-                return 0;
+            
+            iter = node->findChild(c);
+            if (iter == node->children.end()) {
+                return false;
             }
+            
+            node = *iter;
 
             // If the prefixes mismatch, this key cannot exist in the tree.
             size_t p = _comparePrefix(node->trieKey, charKey + depth, key.size() - depth);
@@ -485,17 +486,12 @@ public:
             if (isUniquelyOwned) {
                 // If this node is uniquely owned, simply set that child node to null and
                 // "cut" off that branch of our tree
-                last->children[firstChar] = nullptr;
-                _compressOnlyChild(last);
+                last->deleteChild(firstChar);
             } else {
                 // If it's not uniquely owned, copy 'last' before deleting the node that
                 // matches key.
                 std::shared_ptr<Node> child = std::make_shared<Node>(*last);
-                child->children[firstChar] = nullptr;
-
-                // 'last' may only have one child, in which case we need to evaluate
-                // whether or not this node is redundant.
-                _compressOnlyChild(child.get());
+                child->deleteChild(firstChar);
 
                 // Continue copying the rest of the branch so we can preserve it for the
                 // other owner(s).
@@ -506,7 +502,7 @@ public:
                     context.pop_back();
 
                     node = std::make_shared<Node>(*last);
-                    node->children[firstChar] = child;
+                    node->insertChild(firstChar, child);
                     child = node;
                 }
                 _root = node;
@@ -647,15 +643,17 @@ public:
         // we already examined.
         uint8_t idx = '\0';
         size_t depth = 0;
+        typename std::vector<std::shared_ptr<Node>>::iterator iter;
 
         // Traverse the path given the key to see if the node exists.
         while (depth < key.size()) {
             idx = static_cast<uint8_t>(charKey[depth]);
-            if (node->children[idx] == nullptr) {
+            iter = node->findChild(idx);
+            if (iter == node->children.end()) {
                 break;
             }
 
-            node = node->children[idx].get();
+            node = (*iter).get();
             // We may eventually need to search this node's parent for larger children
             idx += 1;
             size_t mismatchIdx = _comparePrefix(node->trieKey, charKey + depth, key.size() - depth);
@@ -705,7 +703,7 @@ public:
             node = context.back();
             context.pop_back();
 
-            for (auto iter = idx + node->children.begin(); iter != node->children.end(); ++iter) {
+            for (auto iter = node->lower_bound(idx); iter != node->children.end(); ++iter) {
                 if (*iter != nullptr) {
                     // There exists a node with a key larger than the one given, traverse to this
                     // node which will be the left-most node in this sub-tree.
@@ -761,28 +759,273 @@ public:
 
 private:
     class Node {
-        friend class RadixStore;
-
     public:
-        Node() {
-            children.fill(nullptr);
-        }
+        enum Type { NODE4, NODE16, NODE48, NODE256 };
+        std::vector<uint8_t> trieKey;
+        boost::optional<value_type> data;
+        std::vector<std::shared_ptr<Node>> children;
+        std::vector<uint8_t> keys;
+        uint8_t numChildren;
+        Type type;
 
-        Node(std::vector<uint8_t> key) : trieKey(key) {
-            children.fill(nullptr);
+        Node() : numChildren(0), type(NODE4) {
+            keys.reserve(4);
+            children.reserve(4);
+        }
+        
+        Node(std::vector<uint8_t> key) : trieKey(key), numChildren(0), type(NODE4) {
+            keys.reserve(4);
+            children.reserve(4);
         }
 
         bool isLeaf() {
-            for (auto child : children) {
-                if (child != nullptr)
-                    return false;
+            return numChildren == 0;
+        }
+        
+        typename std::vector<std::shared_ptr<Node>>::iterator findChild(uint8_t keyChar) {
+            if (type == NODE4) {
+                for (uint8_t i = 0; i < numChildren; ++i) {
+                    if (keys[i] == keyChar) 
+                        return children.begin() + i;
+                }
+            } else if (type == NODE16) {
+                // This could be optimized with binary search or parallel comparisions
+                // using SIMD instructions
+                for (uint8_t i = 0; i < numChildren; ++i) {
+                    if (keys[i] == keyChar) 
+                        return children.begin() + i;
+                }
+            } else if (type == NODE48) {
+                if (keys[keyChar])
+                    return children.begin() + (keys[keyChar] - 1);
+            } else if (type == NODE256) {
+                if (*(children.begin() + keyChar) != nullptr) {
+                    return children.begin() + keyChar;
+                }
             }
-            return true;
+
+            return children.end();
+        }
+        
+        typename std::vector<std::shared_ptr<Node>>::iterator lower_bound(uint8_t keyChar) {
+            if (type == NODE4) {
+                for (uint8_t i = 0; i < numChildren; ++i) {
+                    if (keys[i] == keyChar || keys[i] > keyChar) 
+                        return children.begin() + i;
+                }
+            } else if (type == NODE16) {
+                // This could be optimized with binary search or parallel comparisions
+                // using SIMD instructions
+                for (uint8_t i = 0; i < numChildren; ++i) {
+                    if (keys[i] == keyChar || keys[i] > keyChar) 
+                        return children.begin() + i;
+                }
+            } else if (type == NODE48) {
+                if (keys[keyChar]) {
+                    return children.begin() + (keys[keyChar] - 1);
+                }
+                for (uint8_t i = 0; i < numChildren; ++i) {
+                    if (children[i]->trieKey.front() > keyChar) 
+                        return children.begin() + i;
+                }
+            } else if (type == NODE256) {
+                if (*(children.begin() + keyChar) != nullptr) {
+                    return children.begin() + keyChar;
+                }
+                for (uint8_t i = 0; i < 256; ++i) {
+                    if (children[i] != nullptr) 
+                        return children.begin() + i;
+                }
+            }
+
+            return children.end();
+        }
+        
+        void insertChild(uint8_t keyChar, std::shared_ptr<Node> child) {
+            if (type == NODE4) {
+                if (numChildren < 4) {
+                    auto insertPoint = lower_bound(keyChar);
+                    if (insertPoint != children.end() && (*insertPoint)->trieKey.front() == keyChar) {
+                        *insertPoint = child;
+                        return;
+                    }
+                    int idx = std::distance(children.begin(), insertPoint);
+                    keys.insert(keys.begin() + idx, keyChar);
+                    children.insert(insertPoint, child);
+                    numChildren++;
+                    return;
+                } 
+            
+                // Resize
+                type = NODE16;
+                keys.reserve(16);
+                children.reserve(16);
+            }
+
+            if (type == NODE16) {
+                if (numChildren < 16) {
+                    auto insertPoint = lower_bound(keyChar);
+                    if (insertPoint != children.end() && (*insertPoint)->trieKey.front() == keyChar) {
+                        *insertPoint = child;
+                        return;
+                    } 
+                    int idx = std::distance(children.begin(), insertPoint);
+                    keys.insert(keys.begin() + idx, keyChar);
+                    children.insert(insertPoint, child);
+                    numChildren++;
+                    return;
+                }
+                
+                // Resize
+                type = NODE48;
+                children.reserve(48);
+
+                std::vector<uint8_t> newKeys;
+                newKeys.reserve(256);
+                for (uint8_t i = 0; i < uint8_t(256); ++i) {
+                    newKeys.push_back(0);
+                }
+                for (uint8_t i = 0; i < numChildren; ++i) {
+                    newKeys[keys[i]] = i + 1;
+                }
+                keys = newKeys;
+            }
+
+            if (type == NODE48) {
+                if (numChildren < 48) {
+                    auto insertPoint = lower_bound(keyChar);
+                    if (insertPoint != children.end() && (*insertPoint)->trieKey.front() == keyChar) {
+                        *insertPoint = child;
+                        return;
+                    }
+                    int pos = std::distance(children.begin(), insertPoint);
+                    keys[keyChar] = pos + 1; 
+                    children.insert(insertPoint, child);
+                    numChildren++;
+                    return;
+                } 
+
+                // Resize
+                type = NODE256;
+
+                std::vector<std::shared_ptr<Node>> newChildren;
+                newChildren.reserve(256);
+                for (uint8_t i = 0; i < 256; ++i) {
+                    if (keys[i])
+                        newChildren[i] = children[keys[i] - 1];
+                }
+                children = newChildren;
+                std::vector<uint8_t>().swap(keys);
+            }
+
+            if (type == NODE256) {
+                children[keyChar] = child;
+                numChildren++;
+            }
         }
 
-        std::vector<uint8_t> trieKey;
-        boost::optional<value_type> data;
-        std::array<std::shared_ptr<Node>, 256> children;
+        void deleteChild(uint8_t keyChar) {
+            if (type == NODE4) {
+                auto child = findChild(keyChar);
+                if (child == children.end()) {
+                    return;
+                }
+                int pos = std::distance(children.begin(), child);
+                keys.erase(keys.begin() + pos);
+                children.erase(child);
+                numChildren--;
+
+                return compress();
+            
+            } else if (type == NODE16) {
+                auto child = findChild(keyChar);
+                if (child == children.end()) {
+                    return;
+                }
+                int pos = std::distance(children.begin(), child);
+                keys.erase(keys.begin() + pos);
+                children.erase(child);
+                numChildren--;
+
+                // Resize
+                if (numChildren == 4) {
+                    type = NODE4;
+                    std::vector<std::shared_ptr<Node>>(children).swap(children);
+                    std::vector<uint8_t>(keys).swap(keys);
+                }
+            } else if (type == NODE48) {
+                int pos = keys[keyChar];
+                keys[keyChar] = 0;
+                children.erase(children.begin() + (pos - 1));
+                numChildren--;
+
+                // Resize
+                if (numChildren == 14) {
+                    type = NODE16;
+                    std::vector<uint8_t> newKeys;
+                    newKeys.reserve(16);
+                    std::vector<std::shared_ptr<Node>> newChildren;
+                    newChildren.reserve(16);
+                    for (uint8_t i = 0; i < 256; ++i) {
+                        pos = keys[i];
+                        if (pos) {
+                            newKeys.push_back(i);
+                            newChildren.push_back(children[pos - 1]);
+                        }
+                    }
+                    keys = newKeys;
+                    children = newChildren;
+                }
+                
+            } else if (type == NODE256) {
+                children[keyChar] = nullptr;
+                numChildren--;
+            
+                // Resize
+                if (numChildren == 37) {
+                    type = NODE48;
+                    std::vector<uint8_t> newKeys;
+                    newKeys.reserve(256);
+                    std::vector<std::shared_ptr<Node>> newChildren;
+                    newChildren.reserve(48);
+                    uint8_t pos = 0;
+                    for (uint8_t i = 0; i < 256; i++) {
+                        if (children[i]) {
+                            newChildren.push_back(children[i]);
+                            newKeys[i] = pos + 1;
+                            pos++;        
+                        }
+                    }
+                    keys = newKeys;
+                    children = newChildren;
+                }
+            }
+        }
+        
+        void updateWithCompression(boost::optional<value_type> value) {
+            if (value == boost::none) {
+                data = boost::none;
+            } else {
+                data.emplace(value->first, value->second);
+            }
+            compress();
+        }
+        
+        void compress() {
+            if (numChildren == 1 && data == boost::none && trieKey.size() != 0) {
+                std::shared_ptr<Node> onlyChild = children[0];
+                for (size_t i = 0; i < onlyChild->trieKey.size(); ++i) {
+                    trieKey.push_back(onlyChild->trieKey[i]);
+                }
+                children = onlyChild->children;
+                if (onlyChild->data != boost::none) {
+                    data.emplace(onlyChild->data->first, onlyChild->data->second);
+                }
+                keys = onlyChild->keys;
+                numChildren = onlyChild->numChildren;
+                type = onlyChild->type;
+            }
+        }
     };
 
     /*
@@ -821,14 +1064,15 @@ private:
     Node* _findNode(const Key& key) const {
         int depth = 0;
         uint8_t childFirstChar = static_cast<uint8_t>(key.front());
-        auto node = _root->children[childFirstChar];
+        std::shared_ptr<Node> node = _root;
+        typename std::vector<std::shared_ptr<Node>>::iterator iter = node->findChild(childFirstChar);
 
         const char* charKey = key.data();
 
-        while (node != nullptr) {
-
+        while (iter != node->children.end()) {
+            node = *iter;
             size_t mismatchIdx = _comparePrefix(node->trieKey, charKey + depth, key.size() - depth);
-            if (mismatchIdx != node->trieKey.size()) {
+            if (mismatchIdx !=  node->trieKey.size()) {
                 return nullptr;
             } else if (mismatchIdx == key.size() - depth && node->data != boost::none) {
                 return node.get();
@@ -837,9 +1081,8 @@ private:
             depth += node->trieKey.size();
 
             childFirstChar = static_cast<uint8_t>(charKey[depth]);
-            node = node->children[childFirstChar];
+            iter = node->findChild(childFirstChar);
         }
-
         return nullptr;
     }
 
@@ -860,22 +1103,26 @@ private:
         int depth = 0;
 
         uint8_t childFirstChar = static_cast<uint8_t>(charKey[depth]);
-        std::shared_ptr<Node> node = _root->children[childFirstChar];
-        std::shared_ptr<Node> old = node;
 
         // Copy root if it is not uniquely owned.
         if (_root.use_count() > 1) {
-            _root = std::make_shared<Node>(*_root.get());
+            _root = std::make_shared<Node>(*_root);
         }
 
         std::shared_ptr<Node> prev = _root;
-        while (node != nullptr) {
+        std::shared_ptr<Node> node = _root;
+        typename std::vector<std::shared_ptr<Node>>::iterator iter = node->findChild(childFirstChar);
+        while (iter != node->children.end()) {
+            if (*iter == nullptr){
+                std::cout << "nullptr" << std::endl;
+            }
+            node = *iter;
             // Copy node if it is not uniquely owned. A unique node will always have two pointers
             // to it. One for the parent node and one for the 'node' variable.
             // 'prev' should always be uniquely owned and so we should be able to modify it.
             if (node.use_count() > 2) {
-                node = std::make_shared<Node>(*old.get());
-                prev->children[old->trieKey.front()] = node;
+                node = std::make_shared<Node>(*node);
+                prev->insertChild(node->trieKey.front(), node);
             }
 
             // 'node' is uniquely owned at this point, so we are free to modify it.
@@ -887,14 +1134,14 @@ private:
                 // Make a new node with whatever prefix is shared between node->trieKey
                 // and the new key. This will replace the current node in the tree.
                 std::vector<uint8_t> newKey = _makeKey(node->trieKey, 0, mismatchIdx);
-                auto newNode = _addChild(prev, newKey, boost::none);
+                std::shared_ptr<Node> newNode = _addChild(prev, newKey, boost::none);
 
                 depth += mismatchIdx;
                 const_iterator it(_root, newNode.get());
                 if (key.size() - depth != 0) {
                     // Make a child with whatever is left of the new key.
                     newKey = _makeKey(charKey + depth, key.size() - depth);
-                    auto newChild = _addChild(newNode, newKey, value);
+                    std::shared_ptr<Node> newChild = _addChild(newNode, newKey, value);
                     it = const_iterator(_root, newChild.get());
                 } else {
                     // The new key is a prefix of an existing key, and has its own node,
@@ -904,18 +1151,13 @@ private:
 
                 // Change the current node's trieKey and make a child of the new node.
                 newKey = _makeKey(node->trieKey, mismatchIdx, node->trieKey.size() - mismatchIdx);
-                newNode->children[newKey.front()] = node;
+                newNode->insertChild(newKey.front(), node);
                 node->trieKey = newKey;
 
                 return std::pair<const_iterator, bool>(it, true);
             } else if (mismatchIdx == key.size() - depth) {
                 // Update an internal node
-                if (value == boost::none) {
-                    node->data = boost::none;
-                    _compressOnlyChild(node.get());
-                } else {
-                    node->data.emplace(value->first, value->second);
-                }
+                node->updateWithCompression(value);
                 const_iterator it(_root, node.get());
                 return std::pair<const_iterator, bool>(it, true);
             }
@@ -923,11 +1165,7 @@ private:
             depth += node->trieKey.size();
             childFirstChar = static_cast<const uint8_t>(charKey[depth]);
             prev = node;
-            node = node->children[childFirstChar];
-
-            if (old != nullptr) {
-                old = old->children[childFirstChar];
-            }
+            iter = node->findChild(childFirstChar);
         }
 
         // Add a completely new child to a node. The new key at this depth does not
@@ -968,11 +1206,11 @@ private:
     std::shared_ptr<Node> _addChild(std::shared_ptr<Node> node,
                                     std::vector<uint8_t> key,
                                     boost::optional<value_type> value) {
-        std::shared_ptr<Node> newNode = std::make_shared<Node>(key);
+        auto newNode = std::make_shared<Node>(key);
         if (value != boost::none) {
             newNode->data.emplace(value->first, value->second);
         }
-        node->children[key.front()] = newNode;
+        node->insertChild(key.front(), newNode);
         return newNode;
     }
 
@@ -994,7 +1232,7 @@ private:
 
         while (depth < key.size()) {
             uint8_t c = static_cast<uint8_t>(charKey[depth]);
-            node = node->children[c].get();
+            node = (*node->findChild(c)).get();
             context.push_back(node);
             depth = depth + node->trieKey.size();
         }
@@ -1018,42 +1256,6 @@ private:
             }
         }
         return i;
-    }
-
-    /*
-     * Compresses a child node into its parent if necessary.
-     *
-     * This is required when an erase results in a node with no value
-     * and only one child.
-     *
-     */
-    void _compressOnlyChild(Node* node) {
-        // Don't compress if this node has an actual value associated with it
-        // or is the root.
-        if (node->data != boost::none || node->trieKey.empty()) {
-            return;
-        }
-
-        // Determine if this node has only one child.
-        std::shared_ptr<Node> onlyChild = nullptr;
-        for (size_t i = 0; i < node->children.size(); ++i) {
-            if (node->children[i] != nullptr) {
-                if (onlyChild != nullptr) {
-                    return;
-                }
-                onlyChild = node->children[i];
-            }
-        }
-
-        // Append the child's key onto the parent.
-        for (char item : onlyChild->trieKey) {
-            node->trieKey.push_back(item);
-        }
-
-        if (onlyChild->data != boost::none) {
-            node->data.emplace(onlyChild->data->first, onlyChild->data->second);
-        }
-        node->children = onlyChild->children;
     }
 
     std::shared_ptr<Node> _root;
