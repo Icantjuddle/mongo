@@ -581,12 +581,16 @@ public:
         // When we search a child array, always search to the right of 'idx' so that
         // when we go back up the tree we never search anything less than something
         // we already examined.
-        uint8_t idx = '\0';
+        unsigned int idx = 0;
         size_t depth = 0;
 
         // Traverse the path given the key to see if the node exists.
         while (depth < key.size()) {
-            idx = static_cast<uint8_t>(charKey[depth]);
+            // idx is an unsigned int, and converting from a signed 8-bit char to an unsigned int is
+            // not trivial. It is necessary to convert the signed char to a unsigned 8-bit int (aka
+            // 'unsigned char' or 'uint8_t'). Then only it can be assigned to an unsigned int.
+            unsigned char c = static_cast<unsigned char>(charKey[depth]);
+            idx = c;
             if (node->children[idx] == nullptr) {
                 break;
             }
@@ -616,7 +620,8 @@ public:
                 } else {
                     // If the current key is less, we will need to go back up the
                     // tree and this node does not need to be pushed into the context.
-                    idx = static_cast<uint8_t>(charKey[depth]) + 1;
+                    unsigned char c = static_cast<unsigned char>(charKey[depth]);
+                    idx = c + 1;
                 }
                 break;
             }
@@ -631,7 +636,7 @@ public:
         } else if (depth == key.size()) {
             // The search key is an exact prefix, so we need to search all of this node's
             // children.
-            idx = '\0';
+            idx = 0;
         }
 
         // The node did not exist, so must find an node with the next largest key (if it
@@ -666,7 +671,8 @@ public:
                 // We have searched the root. There's nothing left to search.
                 return end();
             } else {
-                idx = node->trieKey.front() + 1;
+                unsigned char c = static_cast<unsigned char>(node->trieKey.front());
+                idx = c + 1;
             }
         }
 
@@ -782,7 +788,6 @@ private:
         auto node = _root->children[childFirstChar];
 
         while (node != nullptr) {
-
             size_t mismatchIdx = _comparePrefix(node->trieKey, charKey + depth, key.size() - depth);
             if (mismatchIdx != node->trieKey.size()) {
                 return nullptr;
@@ -988,7 +993,12 @@ private:
         context.push_back(node);
 
         const char* charKey = key.data();
-        size_t depth = 0 + node->trieKey.size();
+
+        size_t depth;
+        if (node->trieKey.empty())
+            depth = 0;
+        else
+            depth = 0 + node->trieKey.size() + 1;
 
         while (depth < key.size()) {
             uint8_t c = static_cast<uint8_t>(charKey[depth]);
