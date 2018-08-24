@@ -1,4 +1,4 @@
-// @tags: [requires_non_retryable_writes, requires_fastcount]
+// @tags: [requires_non_retryable_writes, requires_fastcount, does_not_work_biggie]
 
 // Test removal of Records that have been reused since the remove operation began.  SERVER-5198
 

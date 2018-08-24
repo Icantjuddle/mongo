@@ -1,6 +1,6 @@
 // Cannot implicitly shard accessed collections because of following errmsg: Cannot output to a
 // non-sharded collection because sharded collection exists already.
-// @tags: [assumes_unsharded_collection, does_not_support_stepdowns]
+// @tags: [assumes_unsharded_collection, does_not_support_stepdowns, does_not_work_biggie]
 
 t = db.mr_merge2;
 t.drop();

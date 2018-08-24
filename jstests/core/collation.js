@@ -1,7 +1,7 @@
 // Cannot implicitly shard accessed collections because of collection existing when none
 // expected.
 // @tags: [assumes_no_implicit_collection_creation_after_drop, does_not_support_stepdowns,
-// requires_non_retryable_commands, requires_non_retryable_writes]
+// requires_non_retryable_commands, requires_non_retryable_writes, does_not_work_biggie]
 
 // Integration tests for the collation feature.
 (function() {

@@ -3,6 +3,7 @@
 // @tags: [
 //   assumes_write_concern_unchanged,
 //   requires_non_retryable_writes,
+//   does_not_work_biggie,
 // ]
 
 var coll = db.getCollection("jstests_geo_update_btree");

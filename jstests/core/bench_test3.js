@@ -1,3 +1,4 @@
+// @tags: [does_not_work_biggie]
 t = db.bench_test3;
 t.drop();
 
@@ -9,8 +10,8 @@ benchArgs = {
         query: {_id: {"#RAND_INT": [0, 5, 4]}},
         update: {$inc: {x: 1}}
     }],
-    parallel: 2,
-    seconds: 10,
+    parallel: 1,
+    seconds: 3,
     host: db.getMongo().host
 };
 
